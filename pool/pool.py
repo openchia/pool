@@ -49,7 +49,7 @@ from chia.pools.pool_puzzles import (
 from .difficulty_adjustment import get_new_difficulty
 from .singleton import create_absorb_transaction, get_singleton_state, get_coin_spend, get_farmed_height
 from .store.abstract import AbstractPoolStore
-from .store.sqlite_store import SqlitePoolStore
+from .store.pgsql_store import PgsqlPoolStore
 from .record import FarmerRecord
 from .util import error_dict, RequestMetadata
 
@@ -83,7 +83,7 @@ class Pool:
         self.config = config
         self.constants = constants
 
-        self.store: AbstractPoolStore = pool_store or SqlitePoolStore()
+        self.store: AbstractPoolStore = pool_store or PgsqlPoolStore(pool_config)
 
         self.pool_fee = pool_config["pool_fee"]
 
@@ -556,6 +556,7 @@ class Pool:
 
                 if farmer_record.is_pool_member:
                     await self.store.add_partial(partial.payload.launcher_id, uint64(int(time.time())), points_received)
+                    await self.store.add_points(partial.payload.launcher_id, points_received)
                     self.log.info(
                         f"Farmer {farmer_record.launcher_id} updated points to: "
                         f"{farmer_record.points + points_received}"
