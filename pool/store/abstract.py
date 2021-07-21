@@ -62,7 +62,7 @@ class AbstractPoolStore(ABC):
         """Rest all Farmers' points to 0"""
 
     @abstractmethod
-    async def add_partial(self, launcher_id: bytes32, timestamp: uint64, difficulty: uint64):
+    async def add_partial(self, launcher_id: bytes32, timestamp: uint64, difficulty: uint64, error: Optional[str] = None):
         """Register new partial and update corresponding Farmer's points"""
 
     @abstractmethod

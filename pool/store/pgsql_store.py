@@ -158,12 +158,12 @@ class PgsqlPoolStore(AbstractPoolStore):
     async def clear_farmer_points(self) -> None:
         await self._execute("UPDATE farmer set points=0")
 
-    async def add_partial(self, launcher_id: bytes32, timestamp: uint64, difficulty: uint64):
+    async def add_partial(self, launcher_id: bytes32, timestamp: uint64, difficulty: uint64, error: Optional[str] = None):
         async with self.pool.acquire() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute(
-                    "INSERT INTO partial (launcher_id, timestamp, difficulty) VALUES(%s, %s, %s)",
-                    (launcher_id.hex(), timestamp, difficulty),
+                    "INSERT INTO partial (launcher_id, timestamp, difficulty, error) VALUES(%s, %s, %s, %s)",
+                    (launcher_id.hex(), timestamp, difficulty, error),
                 )
 
             async with conn.cursor() as cursor:
@@ -176,7 +176,7 @@ class PgsqlPoolStore(AbstractPoolStore):
 
     async def get_recent_partials(self, launcher_id: bytes32, count: int) -> List[Tuple[uint64, uint64]]:
         rows = await self._execute(
-            "SELECT timestamp, difficulty from partial WHERE launcher_id=%s ORDER BY timestamp DESC LIMIT %s",
+            "SELECT timestamp, difficulty from partial WHERE launcher_id=%s AND error IS NULL ORDER BY timestamp DESC LIMIT %s",
             (launcher_id.hex(), count),
         )
         ret: List[Tuple[uint64, uint64]] = [(uint64(timestamp), uint64(difficulty)) for timestamp, difficulty in rows]

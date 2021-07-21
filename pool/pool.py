@@ -518,11 +518,13 @@ class Pool:
                 response = await self.node_rpc_client.get_recent_signage_point_or_eos(None, partial.payload.sp_hash)
                 if response is None or response["reverted"]:
                     self.log.info(f"Partial EOS reverted: {partial.payload.sp_hash}")
+                    await self.store.add_partial(partial.payload.launcher_id, uint64(int(time.time())), points_received, 'EOS_REVERTED')
                     return
             else:
                 response = await self.node_rpc_client.get_recent_signage_point_or_eos(partial.payload.sp_hash, None)
                 if response is None or response["reverted"]:
                     self.log.info(f"Partial SP reverted: {partial.payload.sp_hash}")
+                    await self.store.add_partial(partial.payload.launcher_id, uint64(int(time.time())), points_received, 'SP_REVERTED')
                     return
 
             # Now we know that the partial came on time, but also that the signage point / EOS is still in the
@@ -530,6 +532,7 @@ class Pool:
             pos_hash = partial.payload.proof_of_space.get_hash()
             if self.recent_points_added.get(pos_hash):
                 self.log.info(f"Double signage point submitted for proof: {partial.payload}")
+                await self.store.add_partial(partial.payload.launcher_id, uint64(int(time.time())), points_received, 'DOUBLE_SIGNAGE_POINT')
                 return
             self.recent_points_added.put(pos_hash, uint64(1))
 
@@ -540,11 +543,13 @@ class Pool:
 
             if singleton_state_tuple is None:
                 self.log.info(f"Invalid singleton {partial.payload.launcher_id}")
+                await self.store.add_partial(partial.payload.launcher_id, uint64(int(time.time())), points_received, 'INVALID_SINGLETON')
                 return
 
             _, _, is_member = singleton_state_tuple
             if not is_member:
                 self.log.info(f"Singleton is not assigned to this pool")
+                await self.store.add_partial(partial.payload.launcher_id, uint64(int(time.time())), points_received, 'SINGLETON_NOT_POOL')
                 return
 
             async with self.store.lock:
