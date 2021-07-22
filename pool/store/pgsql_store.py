@@ -200,12 +200,6 @@ class PgsqlPoolStore(AbstractPoolStore):
             )
         )
 
-    async def add_points(self, launcher_id: bytes32, points: int) -> None:
-        await self._execute(
-            "INSERT INTO points (launcher_id, points, timestamp) VALUES (%s, %s, %s)",
-            (launcher_id.hex(), points, time.time()),
-        )
-
     async def add_payout(self, coin_records, amount, fee) -> int:
         rv = await self._execute(
             "INSERT INTO payout "
