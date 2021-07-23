@@ -815,8 +815,8 @@ class Pool:
 
         response = await get_signage_point_or_eos()
         if response is None:
-            # Try again after 10 seconds in case we just didn't yet receive the signage point
-            await asyncio.sleep(10)
+            # Try again after 20 seconds in case we just didn't yet receive the signage point
+            await asyncio.sleep(20)
             response = await get_signage_point_or_eos()
 
         if response is None or response["reverted"]:
