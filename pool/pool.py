@@ -820,7 +820,7 @@ class Pool:
             response = await get_signage_point_or_eos()
 
         if response is None or response["reverted"]:
-            await self.store.add_partial(partial.payload.launcher_id, time_received_partial, farmer_record.difficulty, 'INVALID_SIGNAGE_POINT_OR_EOS')
+            await self.store.add_partial(partial.payload.launcher_id, time_received_partial, farmer_record.difficulty, 'INVALID_SIGNAGE_OR_EOS')
             return error_dict(
                 PoolErrorCode.NOT_FOUND, f"Did not find signage point or EOS {partial.payload.sp_hash}, {response}"
             )
