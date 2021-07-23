@@ -794,12 +794,14 @@ class Pool:
         pk2: G1Element = farmer_record.authentication_public_key
         valid_sig = AugSchemeMPL.aggregate_verify([pk1, pk2], [message, message], partial.aggregate_signature)
         if not valid_sig:
+            await self.store.add_partial(partial.payload.launcher_id, time_received_partial, farmer_record.difficulty, 'INVALID_AGG_SIGNATURE')
             return error_dict(
                 PoolErrorCode.INVALID_SIGNATURE,
                 f"The aggregate signature is invalid {partial.aggregate_signature}",
             )
 
         if partial.payload.proof_of_space.pool_contract_puzzle_hash != farmer_record.p2_singleton_puzzle_hash:
+            await self.store.add_partial(partial.payload.launcher_id, time_received_partial, farmer_record.difficulty, 'INVALID_POOL_CONTRACT')
             return error_dict(
                 PoolErrorCode.INVALID_P2_SINGLETON_PUZZLE_HASH,
                 f"Invalid pool contract puzzle hash {partial.payload.proof_of_space.pool_contract_puzzle_hash}",
@@ -818,6 +820,7 @@ class Pool:
             response = await get_signage_point_or_eos()
 
         if response is None or response["reverted"]:
+            await self.store.add_partial(partial.payload.launcher_id, time_received_partial, farmer_record.difficulty, 'INVALID_SIGNAGE_POINT_OR_EOS')
             return error_dict(
                 PoolErrorCode.NOT_FOUND, f"Did not find signage point or EOS {partial.payload.sp_hash}, {response}"
             )
@@ -827,6 +830,7 @@ class Pool:
         end_of_sub_slot: Optional[EndOfSubSlotBundle] = response.get("eos", None)
 
         if time_received_partial - node_time_received_sp > self.partial_time_limit:
+            await self.store.add_partial(partial.payload.launcher_id, time_received_partial, farmer_record.difficulty, 'INVALID_TOO_LATE')
             return error_dict(
                 PoolErrorCode.TOO_LATE,
                 f"Received partial in {time_received_partial - node_time_received_sp}. "
@@ -845,6 +849,7 @@ class Pool:
             self.constants, challenge_hash, partial.payload.sp_hash
         )
         if quality_string is None:
+            await self.store.add_partial(partial.payload.launcher_id, time_received_partial, farmer_record.difficulty, 'INVALID_PROOF_OF_SPACE')
             return error_dict(PoolErrorCode.INVALID_PROOF, f"Invalid proof of space {partial.payload.sp_hash}")
 
         current_difficulty = farmer_record.difficulty
@@ -857,6 +862,7 @@ class Pool:
         )
 
         if required_iters >= self.iters_limit:
+            await self.store.add_partial(partial.payload.launcher_id, time_received_partial, farmer_record.difficulty, 'INVALID_PROOF_NOT_GOOD_ENOUGH')
             return error_dict(
                 PoolErrorCode.PROOF_NOT_GOOD_ENOUGH,
                 f"Proof of space has required iters {required_iters}, too high for difficulty " f"{current_difficulty}",
