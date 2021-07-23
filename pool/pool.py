@@ -63,9 +63,7 @@ class Pool:
         difficulty_function: Callable = get_new_difficulty,
     ):
         self.follow_singleton_tasks: Dict[bytes32, asyncio.Task] = {}
-        self.log = logging
-        # If you want to log to a file: use filename='example.log', encoding='utf-8'
-        self.log.basicConfig(level=logging.INFO)
+        self.log = logging.getLogger('pool')
 
         # We load our configurations from here
         with open(os.getcwd() + "/config.yaml") as f:

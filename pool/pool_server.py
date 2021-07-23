@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import logging.config
 import time
 import traceback
 from typing import Dict, Callable, Optional
@@ -298,6 +299,33 @@ async def stop():
 
 
 def main():
+
+    logging.root.setLevel(logging.INFO)
+
+    logging.config.dictConfig({
+        "version": 1,
+        "disable_existing_loggers": False,
+        "loggers": {
+            "": {
+                "handlers": ["console"],
+            },
+        },
+        "handlers": {
+            "console": {
+                "level": "INFO",
+                "class": "logging.StreamHandler",
+                "stream": "ext://sys.stdout",
+                "formatter": "console",
+            },
+        },
+        "formatters": {
+            "console": {
+                "()": "colorlog.ColoredFormatter",
+                "format": "[%(asctime)s] (%(log_color)s%(levelname)-8s%(reset)s) %(name)s.%(funcName)s():%(lineno)d - %(message)s",
+            },
+        }
+    })
+
     try:
         asyncio.run(start_pool_server())
     except KeyboardInterrupt:
