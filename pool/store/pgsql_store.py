@@ -166,13 +166,14 @@ class PgsqlPoolStore(AbstractPoolStore):
                     (launcher_id.hex(), timestamp, difficulty, error),
                 )
 
-            async with conn.cursor() as cursor:
-                await cursor.execute("SELECT points from farmer where launcher_id=%s", (launcher_id.hex(),))
-                row = await cursor.fetchone()
-                points = row[0]
-                await cursor.execute(
-                    "UPDATE farmer set points=%s where launcher_id=%s", (points + difficulty, launcher_id.hex())
-                )
+            if error is None:
+                async with conn.cursor() as cursor:
+                    await cursor.execute("SELECT points from farmer where launcher_id=%s", (launcher_id.hex(),))
+                    row = await cursor.fetchone()
+                    points = row[0]
+                    await cursor.execute(
+                        "UPDATE farmer set points=%s where launcher_id=%s", (points + difficulty, launcher_id.hex())
+                    )
 
     async def get_recent_partials(self, launcher_id: bytes32, count: int) -> List[Tuple[uint64, uint64]]:
         rows = await self._execute(
