@@ -862,7 +862,7 @@ class Pool:
         )
 
         if required_iters >= self.iters_limit:
-            await self.store.add_partial(partial.payload.launcher_id, time_received_partial, farmer_record.difficulty, 'INVALID_PROOF_NOT_GOOD_ENOUGH')
+            await self.store.add_partial(partial.payload.launcher_id, time_received_partial, farmer_record.difficulty, 'PROOF_NOT_GOOD_ENOUGH')
             return error_dict(
                 PoolErrorCode.PROOF_NOT_GOOD_ENOUGH,
                 f"Proof of space has required iters {required_iters}, too high for difficulty " f"{current_difficulty}",
