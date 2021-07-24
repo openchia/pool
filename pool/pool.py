@@ -68,6 +68,7 @@ class Pool:
         # We load our configurations from here
         with open(os.getcwd() + "/config.yaml") as f:
             pool_config: Dict = yaml.safe_load(f)
+        self.pool_config = pool_config
 
         initialize_logging("pool", pool_config["logging"], pathlib.Path(pool_config["logging"]["log_path"]))
 

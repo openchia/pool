@@ -218,45 +218,8 @@ class PoolServer:
         return obj_to_response(post_partial_response)
 
     async def get_login(self, request_obj) -> web.Response:
-        # TODO(pool): add rate limiting
-        launcher_id: bytes32 = hexstr_to_bytes(request_obj.rel_url.query["launcher_id"])
-        authentication_token: uint64 = uint64(request_obj.rel_url.query["authentication_token"])
-        authentication_token_error = check_authentication_token(
-            launcher_id, authentication_token, self.pool.authentication_token_timeout
-        )
-        if authentication_token_error is not None:
-            return authentication_token_error
-
-        farmer_record: Optional[FarmerRecord] = await self.pool.store.get_farmer_record(launcher_id)
-        if farmer_record is None:
-            return error_response(
-                PoolErrorCode.FARMER_NOT_KNOWN, f"Farmer with launcher_id {launcher_id.hex()} unknown."
-            )
-
-        # Validate provided signature
-        signature: G2Element = G2Element.from_bytes(hexstr_to_bytes(request_obj.rel_url.query["signature"]))
-        message: bytes32 = std_hash(
-            AuthenticationPayload("get_login", launcher_id, self.pool.default_target_puzzle_hash, authentication_token)
-        )
-        if not AugSchemeMPL.verify(farmer_record.authentication_public_key, message, signature):
-            return error_response(
-                PoolErrorCode.INVALID_SIGNATURE,
-                f"Failed to verify signature {signature} for launcher_id {launcher_id.hex()}.",
-            )
-
-        self.pool.log.info(f"Login successful for launcher_id: {launcher_id.hex()}")
-
-        return await self.login_response(launcher_id)
-
-    async def login_response(self, launcher_id):
-        record: Optional[FarmerRecord] = await self.pool.store.get_farmer_record(launcher_id)
-        response = {}
-        if record is not None:
-            response["farmer_record"] = record
-            recent_partials = await self.pool.store.get_recent_partials(launcher_id, 20)
-            response["recent_partials"] = recent_partials
-
-        return obj_to_response(response)
+        # Redirect to website
+        raise aiohttp.web.HTTPFound(self.pool.pool_config["login_url"] + '?' + request_obj.url.query_string)
 
 
 server: Optional[PoolServer] = None
@@ -282,7 +245,7 @@ async def start_pool_server(pool_store: Optional[AbstractPoolStore] = None):
             web.post("/farmer", server.wrap_http_handler(server.post_farmer)),
             web.put("/farmer", server.wrap_http_handler(server.put_farmer)),
             web.post("/partial", server.wrap_http_handler(server.post_partial)),
-            web.get("/login", server.wrap_http_handler(server.get_login)),
+            web.get("/login", server.get_login),
         ]
     )
     runner = aiohttp.web.AppRunner(app, access_log=None)
