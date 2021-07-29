@@ -58,7 +58,7 @@ class PgsqlPoolStore(AbstractPoolStore):
                 exists = await cursor.fetchone()
                 if not exists:
                     await cursor.execute(
-                        "INSERT INTO farmer (launcher_id, p2_singleton_puzzle_hash, delay_time, delay_puzzle_hash, authentication_public_key, singleton_tip, singleton_tip_state, points, difficulty, payout_instructions, is_pool_member) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                        "INSERT INTO farmer (launcher_id, p2_singleton_puzzle_hash, delay_time, delay_puzzle_hash, authentication_public_key, singleton_tip, singleton_tip_state, points, difficulty, payout_instructions, is_pool_member, estimated_size) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0)",
                         (
                             farmer_record.launcher_id.hex(),
                             farmer_record.p2_singleton_puzzle_hash.hex(),
@@ -99,6 +99,11 @@ class PgsqlPoolStore(AbstractPoolStore):
         if not row or not row[0]:
             return None
         return self._row_to_farmer_record(row[0])
+
+    async def update_estimated_size(self, launcher_id: bytes32, size: int):
+        await self._execute(
+            "UPDATE farmer SET estimated_size=%s WHERE launcher_id=%s", (size, launcher_id.hex())
+        )
 
     async def update_difficulty(self, launcher_id: bytes32, difficulty: uint64):
         await self._execute(
