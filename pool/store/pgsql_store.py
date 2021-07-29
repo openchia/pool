@@ -169,7 +169,7 @@ class PgsqlPoolStore(AbstractPoolStore):
             if error is None:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        "UPDATE farmer set points = points + %s where launcher_id=%s", (points + difficulty, launcher_id.hex())
+                        "UPDATE farmer set points = points + %s where launcher_id=%s", (difficulty, launcher_id.hex())
                     )
 
     async def get_recent_partials(self, launcher_id: bytes32, count: int) -> List[Tuple[uint64, uint64]]:
