@@ -63,11 +63,11 @@ class Partials(object):
                     lambda x: x[1],
                     filter(lambda x: x[0] >= last_time_target, partials['fifo'].items()),
                 ))
-                estimated_size = points * 10472848254.5664
+                estimated_size = int(points / (self.pool_config['time_target'] * 1.088e-15))
                 logger.debug(
                     'Updating %r with last time_target points of %d (%.3f GiB)',
                     launcher_id.hex(),
                     points,
                     estimated_size / 1073741824,  # 1024 ^ 3
                 )
-                await self.store.update_estimated_size(launcher_id, int(points * 10472848254.5664))
+                await self.store.update_estimated_size(launcher_id, estimated_size)
