@@ -55,7 +55,7 @@ class Partials(object):
         if error is None:
             partials['additions'] += 1
             partials['fifo'][int(timestamp)] = int(difficulty)
-            # Update every 10 partials
+            # Update every 5 partials
             if partials['additions'] == 5:
                 partials['additions'] = 0
                 last_time_target = int(timestamp) - self.pool_config['time_target']
