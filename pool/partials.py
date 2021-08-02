@@ -43,9 +43,9 @@ class Partials(object):
         if error is None:
             partials = self.cache[launcher_id.hex()]
             if len(partials['fifo']) == 0:
-                for ptime, difficulty in await self.store.get_recent_partials(
+                for ptime, difficulty in reversed(await self.store.get_recent_partials(
                     launcher_id, self.pool_config['number_of_partials_target'],
-                ):
+                )):
                     partials['fifo'][int(ptime)] = int(difficulty)
 
         # Add to database
