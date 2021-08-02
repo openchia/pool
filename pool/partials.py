@@ -56,7 +56,7 @@ class Partials(object):
             partials['additions'] += 1
             partials['fifo'][int(timestamp)] = int(difficulty)
             # Update every 10 partials
-            if partials['additions'] == 10:
+            if partials['additions'] == 5:
                 partials['additions'] = 0
                 last_time_target = int(timestamp) - self.pool_config['time_target']
                 points = sum(map(
@@ -64,7 +64,7 @@ class Partials(object):
                     filter(lambda x: x[0] >= last_time_target, partials['fifo'].items()),
                 ))
                 estimated_size = int(points / (self.pool_config['time_target'] * 1.088e-15))
-                logger.debug(
+                logger.info(
                     'Updating %r with last time_target points of %d (%.3f GiB)',
                     launcher_id.hex(),
                     points,
