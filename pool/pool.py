@@ -765,7 +765,7 @@ class Pool:
                 self.log.info(f"launcher_id {launcher_id} got enough confirmations to leave the pool")
                 is_pool_member = False
 
-        self.log.info(f"Is {launcher_id} pool member: {is_pool_member}")
+        self.log.debug(f"Is {launcher_id} pool member: {is_pool_member}")
 
         if farmer_rec is not None and (
             farmer_rec.singleton_tip != buried_singleton_tip

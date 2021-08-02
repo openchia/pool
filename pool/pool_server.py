@@ -151,7 +151,7 @@ class PoolServer:
             farmer_record.points,
         )
 
-        self.pool.log.info(f"get_farmer response {response.to_json_dict()}, " f"launcher_id: {launcher_id.hex()}")
+        self.pool.log.debug(f"get_farmer response {response.to_json_dict()}, " f"launcher_id: {launcher_id.hex()}")
         return obj_to_response(response)
 
     def post_metadata_from_request(self, request_obj):
