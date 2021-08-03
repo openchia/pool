@@ -1,4 +1,5 @@
 import cachetools
+import itertools
 import logging
 
 from .store.abstract import AbstractPoolStore
@@ -18,7 +19,7 @@ class PartialsCache(cachetools.LRUCache):
 
     def __missing__(self, key: str):
         partials = {
-            'additions': 0,
+            'additions': itertools.count(),
             'fifo': cachetools.FIFOCache(self.maxsize_partials),
         }
         self[key] = partials
@@ -43,25 +44,30 @@ class Partials(object):
         if error is None:
             partials = self.cache[launcher_id.hex()]
             if len(partials['fifo']) == 0:
+                # We may have more than double of the number of target partials
+                # while still adjusting to a sane value
                 for ptime, difficulty in reversed(await self.store.get_recent_partials(
-                    launcher_id, self.pool_config['number_of_partials_target'],
+                    launcher_id, self.pool_config['number_of_partials_target'] * 2,
                 )):
-                    partials['fifo'][int(ptime)] = int(difficulty)
+                    # We may have multiple partials using same timestamp (seconds).
+                    # For that reason use the partial additions as part of the key.
+                    partials['fifo'][
+                        (int(ptime), next(partials['additions']))
+                    ] = int(difficulty)
 
         # Add to database
         await self.store.add_partial(launcher_id, timestamp, difficulty, error)
 
         # Add to the cache and compute the estimated farm size if a successful partial
         if error is None:
-            partials['additions'] += 1
-            partials['fifo'][int(timestamp)] = int(difficulty)
+            partial_num = next(partials['additions'])
+            partials['fifo'][(int(timestamp), partial_num)] = int(difficulty)
             # Update every 5 partials
-            if partials['additions'] == 5:
-                partials['additions'] = 0
+            if partial_num % 5 == 0:
                 last_time_target = int(timestamp) - self.pool_config['time_target']
                 points = sum(map(
                     lambda x: x[1],
-                    filter(lambda x: x[0] >= last_time_target, partials['fifo'].items()),
+                    filter(lambda x: x[0][0] >= last_time_target, partials['fifo'].items()),
                 ))
                 estimated_size = int(points / (self.pool_config['time_target'] * 1.088e-15))
                 logger.info(
