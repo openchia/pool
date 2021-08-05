@@ -188,7 +188,7 @@ class PgsqlPoolStore(AbstractPoolStore):
     async def add_block(self, coin_record: CoinRecord, singleton_coin_record: CoinRecord, farmer: FarmerRecord) -> None:
         await self._execute(
             "INSERT INTO block ("
-            " name, singleton, timestamp, confirmed_block_index, puzzle_hash, amount, launcher_id"
+            " name, singleton, timestamp, confirmed_block_index, puzzle_hash, amount, farmed_by_id"
             ") VALUES ("
             " %s,   %s,        %s,        %s,                    %s,          %s,     %s"
             ")",
@@ -230,8 +230,8 @@ class PgsqlPoolStore(AbstractPoolStore):
             else:
                 farmer = 'NULL'
             await self._execute(
-                "INSERT INTO pool_payoutaddress "
-                "(payout_id, puzzle_hash, farmer_id, amount, transaction) VALUES "
+                "INSERT INTO payout_address "
+                "(payout_id, puzzle_hash, launcher_id, amount, transaction) VALUES "
                 "(%%s,       %%s,         %s,        %%s,    %%s)" % (farmer,),
                 (payout_id, i["puzzle_hash"].hex(), i["amount"], transaction.name.hex()),
             )

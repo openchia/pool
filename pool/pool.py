@@ -320,11 +320,15 @@ class Pool:
                             )
                             continue
 
+                        # Absorb at most 10 coins per transaction.
+                        # We cannot exceed max block cost.
+                        coins_to_absorb = ph_to_coins[rec.p2_singleton_puzzle_hash][:10]
+
                         spend_bundle = await create_absorb_transaction(
                             self.node_rpc_client,
                             rec,
                             self.blockchain_state["peak"].height,
-                            ph_to_coins[rec.p2_singleton_puzzle_hash],
+                            coins_to_absorb,
                             self.constants.GENESIS_CHALLENGE,
                         )
 
@@ -333,7 +337,15 @@ class Pool:
 
                         push_tx_response: Dict = await self.node_rpc_client.push_tx(spend_bundle)
                         if push_tx_response["status"] == "SUCCESS":
-                            # TODO(pool): save transaction in records
+                            try:
+                                for coin in coins_to_absorb:
+                                    await self.store.add_block(coin, singleton_coin_record, rec)
+                            except Exception:
+                                self.log.error(
+                                    'Failed to add block %r, farmer %r',
+                                    singleton_coin_record, rec, exc_info=True,
+                                )
+
                             self.log.info(f"Submitted transaction successfully: {spend_bundle.name().hex()}")
                         else:
                             self.log.error(f"Error submitting transaction: {push_tx_response}")
@@ -400,6 +412,8 @@ class Pool:
                         mojo_per_point = floor(amount_to_distribute / total_points)
                         self.log.info(f"Paying out {mojo_per_point} mojo / point")
 
+                        payout_id = await self.store.add_payout(coin_records, total_amount_claimed, pool_coin_amount)
+
                         additions_sub_list: List[Dict] = [
                             {"puzzle_hash": self.pool_fee_puzzle_hash, "amount": pool_coin_amount}
                         ]
@@ -408,13 +422,19 @@ class Pool:
                                 additions_sub_list.append({"puzzle_hash": ph, "amount": points * mojo_per_point})
 
                             if len(additions_sub_list) == self.max_additions_per_transaction:
-                                await self.pending_payments.put(additions_sub_list.copy())
+                                await self.pending_payments.put({
+                                    "payout_id": payout_id,
+                                    "additions": additions_sub_list.copy()
+                                })
                                 self.log.info(f"Will make payments: {additions_sub_list}")
                                 additions_sub_list = []
 
                         if len(additions_sub_list) > 0:
                             self.log.info(f"Will make payments: {additions_sub_list}")
-                            await self.pending_payments.put(additions_sub_list.copy())
+                            await self.pending_payments.put({
+                                "payout_id": payout_id,
+                                "additions": additions_sub_list.copy()
+                            })
 
                         # Subtract the points from each farmer
                         await self.store.clear_farmer_points()
@@ -440,7 +460,9 @@ class Pool:
                     await asyncio.sleep(60)
                     continue
 
-                payment_targets = await self.pending_payments.get()
+                payment_targets_orig = await self.pending_payments.get()
+                payout_id = payment_targets_orig["payout_id"]
+                payment_targets = payment_targets_orig["additions"]
                 assert len(payment_targets) > 0
 
                 self.log.info(f"Submitting a payment: {payment_targets}")
@@ -456,10 +478,11 @@ class Pool:
                 except ValueError as e:
                     self.log.error(f"Error making payment: {e}")
                     await asyncio.sleep(10)
-                    await self.pending_payments.put(payment_targets)
+                    await self.pending_payments.put(payment_targets_orig)
                     continue
 
                 self.log.info(f"Transaction: {transaction}")
+                await self.store.add_transaction(payout_id, transaction, payment_targets)
 
                 while (
                     not transaction.confirmed
@@ -476,7 +499,7 @@ class Pool:
                         self.log.info(f"Confirmations: {peak_height - transaction.confirmed_at_height}")
                     await asyncio.sleep(10)
 
-                # TODO(pool): persist in DB
+                await self.store.confirm_transaction(transaction)
                 self.log.info(f"Successfully confirmed payments {payment_targets}")
 
             except asyncio.CancelledError:
@@ -484,7 +507,7 @@ class Pool:
                 return
             except Exception as e:
                 # TODO(pool): retry transaction if failed
-                self.log.error(f"Unexpected error in submit_payment_loop: {e}")
+                self.log.error(f"Unexpected error in submit_payment_loop: {e}", exc_info=True)
                 await asyncio.sleep(60)
 
     async def confirm_partials_loop(self):
