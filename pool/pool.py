@@ -79,7 +79,7 @@ class Pool:
         self.constants = constants
 
         self.store: AbstractPoolStore = pool_store or PgsqlPoolStore(pool_config)
-        self.partials = Partials(self.store, pool_config)
+        self.partials = Partials(self.store, config, pool_config)
 
         self.pool_fee = pool_config["pool_fee"]
 

@@ -28,8 +28,9 @@ class PartialsCache(cachetools.LRUCache):
 
 class Partials(object):
 
-    def __init__(self, store: AbstractPoolStore, pool_config):
+    def __init__(self, store: AbstractPoolStore, config, pool_config):
         self.store = store
+        self.config = config
         self.pool_config = pool_config
 
         # Up to 10 thousand launchers sending partials
@@ -70,6 +71,8 @@ class Partials(object):
                     filter(lambda x: x[0][0] >= last_time_target, partials['fifo'].items()),
                 ))
                 estimated_size = int(points / (self.pool_config['time_target'] * 1.088e-15))
+                if self.config['full_node']['selected_network'] == 'testnet7':
+                    estimated_size = int(estimated_size / 14680000)
                 logger.info(
                     'Updating %r with last time_target points of %d (%.3f GiB)',
                     launcher_id.hex(),
