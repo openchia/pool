@@ -1,7 +1,7 @@
+from decimal import Decimal
 from typing import Optional, Set, List, Tuple, Dict
 
 import aiopg
-import time
 from blspy import G1Element
 from chia.pools.pool_wallet_info import PoolState
 from chia.types.blockchain_format.sized_bytes import bytes32
@@ -58,7 +58,7 @@ class PgsqlPoolStore(AbstractPoolStore):
                 exists = await cursor.fetchone()
                 if not exists:
                     await cursor.execute(
-                        "INSERT INTO farmer (launcher_id, p2_singleton_puzzle_hash, delay_time, delay_puzzle_hash, authentication_public_key, singleton_tip, singleton_tip_state, points, difficulty, payout_instructions, is_pool_member, estimated_size) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0)",
+                        "INSERT INTO farmer (launcher_id, p2_singleton_puzzle_hash, delay_time, delay_puzzle_hash, authentication_public_key, singleton_tip, singleton_tip_state, points, difficulty, payout_instructions, is_pool_member, estimated_size, points_pplns, share_pplns) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, 0, 0)",
                         (
                             farmer_record.launcher_id.hex(),
                             farmer_record.p2_singleton_puzzle_hash.hex(),
@@ -100,9 +100,9 @@ class PgsqlPoolStore(AbstractPoolStore):
             return None
         return self._row_to_farmer_record(row[0])
 
-    async def update_estimated_size(self, launcher_id: bytes32, size: int):
+    async def update_estimated_size_and_pplns(self, launcher_id: str, size: int, points: int, share: Decimal):
         await self._execute(
-            "UPDATE farmer SET estimated_size=%s WHERE launcher_id=%s", (size, launcher_id.hex())
+            "UPDATE farmer SET estimated_size=%s, points_pplns=%s, share_pplns=%s WHERE launcher_id=%s", (size, points, share, launcher_id)
         )
 
     async def update_difficulty(self, launcher_id: bytes32, difficulty: uint64):
@@ -160,6 +160,14 @@ class PgsqlPoolStore(AbstractPoolStore):
             ret.append((total_points, ph))
         return ret
 
+    async def get_launcher_id_and_payout_instructions(self) -> dict:
+        return {
+            i[0]: bytes32(bytes.fromhex(i[1]))
+            for i in await self._execute(
+                'SELECT launcher_id, payout_instructions FROM farmer WHERE points > 0'
+            )
+        }
+
     async def clear_farmer_points(self) -> None:
         await self._execute("UPDATE farmer set points=0")
 
@@ -174,15 +182,20 @@ class PgsqlPoolStore(AbstractPoolStore):
             if error is None:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
-                        "UPDATE farmer set points = points + %s where launcher_id=%s", (difficulty, launcher_id.hex())
+                        "UPDATE farmer SET points = points + %s WHERE launcher_id=%s",
+                        (difficulty, launcher_id.hex()),
                     )
 
-    async def get_recent_partials(self, launcher_id: bytes32, count: int) -> List[Tuple[uint64, uint64]]:
+    async def get_recent_partials(self, start_time) -> List[Tuple[str, int, int]]:
         rows = await self._execute(
-            "SELECT timestamp, difficulty from partial WHERE launcher_id=%s AND error IS NULL ORDER BY timestamp DESC LIMIT %s",
-            (launcher_id.hex(), count),
+            "SELECT launcher_id, timestamp, difficulty FROM partial "
+            "WHERE timestamp >= %s AND error IS NULL ORDER BY timestamp ASC",
+            (start_time, ),
         )
-        ret: List[Tuple[uint64, uint64]] = [(uint64(timestamp), uint64(difficulty)) for timestamp, difficulty in rows]
+        ret: List[Tuple[str, int, int]] = [
+            (launcher_id, timestamp, difficulty)
+            for launcher_id, timestamp, difficulty in rows
+        ]
         return ret
 
     async def add_block(self, coin_record: CoinRecord, singleton_coin_record: CoinRecord, farmer: FarmerRecord) -> None:

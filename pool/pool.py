@@ -178,6 +178,7 @@ class Pool:
 
     async def start(self):
         await self.store.connect()
+        await self.partials.load_from_store()
         self.pending_point_partials = asyncio.Queue()
 
         self_hostname = self.config["self_hostname"]
@@ -404,10 +405,13 @@ class Pool:
                 async with self.store.lock:
                     # Get the points of each farmer, as well as payout instructions. Here a chia address is used,
                     # but other blockchain addresses can also be used.
-                    points_and_ph: List[
-                        Tuple[uint64, bytes]
-                    ] = await self.store.get_farmer_points_and_payout_instructions()
-                    total_points = sum([pt for (pt, ph) in points_and_ph])
+                    if self.pool_config.get('reward_system') == 'PPLNS':
+                        points_and_ph, total_points = await self.partials.get_farmer_points_and_payout_instructions()
+                    else:
+                        points_and_ph: List[
+                            Tuple[uint64, bytes]
+                        ] = await self.store.get_farmer_points_and_payout_instructions()
+                        total_points = sum([pt for (pt, ph) in points_and_ph])
                     if total_points > 0:
                         mojo_per_point = floor(amount_to_distribute / total_points)
                         self.log.info(f"Paying out {mojo_per_point} mojo / point")
@@ -898,7 +902,7 @@ class Pool:
             if farmer_record is not None:
                 current_difficulty = farmer_record.difficulty
                 # Decide whether to update the difficulty
-                recent_partials = await self.store.get_recent_partials(
+                recent_partials = await self.partials.get_recent_partials(
                     partial.payload.launcher_id, self.number_of_partials_target
                 )
                 # Only update the difficulty if we meet certain conditions
