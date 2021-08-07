@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import logging
 import logging.config
@@ -61,10 +62,10 @@ def get_ssl_context(config):
 
 
 class PoolServer:
-    def __init__(self, config: Dict, constants: ConsensusConstants, pool_store: Optional[AbstractPoolStore] = None):
+    def __init__(self, pool_config_path: str, config: Dict, constants: ConsensusConstants, pool_store: Optional[AbstractPoolStore] = None):
 
         # We load our configurations from here
-        with open(os.getcwd() + "/config.yaml") as f:
+        with open(pool_config_path) as f:
             pool_config: Dict = yaml.safe_load(f)
 
         self.log = logging.getLogger(__name__)
@@ -245,13 +246,13 @@ server: Optional[PoolServer] = None
 runner: Optional[aiohttp.web.BaseRunner] = None
 
 
-async def start_pool_server(pool_store: Optional[AbstractPoolStore] = None):
+async def start_pool_server(pool_config_path=None, pool_store: Optional[AbstractPoolStore] = None):
     global server
     global runner
     config = load_config(DEFAULT_ROOT_PATH, "config.yaml")
     overrides = config["network_overrides"]["constants"][config["selected_network"]]
     constants: ConsensusConstants = DEFAULT_CONSTANTS.replace_str_to_bytes(**overrides)
-    server = PoolServer(config, constants, pool_store)
+    server = PoolServer(pool_config_path, config, constants, pool_store)
     await server.start()
 
     app = web.Application()
@@ -287,6 +288,10 @@ async def stop():
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-c', '--config', default=f'{os.getcwd()}/config.yaml')
+
+    args = parser.parse_args()
 
     logging.root.setLevel(logging.INFO)
 
@@ -315,7 +320,7 @@ def main():
     })
 
     try:
-        asyncio.run(start_pool_server())
+        asyncio.run(start_pool_server(pool_config_path=args.config))
     except KeyboardInterrupt:
         asyncio.run(stop())
 
