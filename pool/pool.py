@@ -203,6 +203,9 @@ class Pool:
         self.create_payment_loop_task = asyncio.create_task(self.create_payment_loop())
         self.submit_payment_loop_task = asyncio.create_task(self.submit_payment_loop())
         self.get_peak_loop_task = asyncio.create_task(self.get_peak_loop())
+        self.pool_estimated_size_loop_task = asyncio.create_task(
+            self.partials.pool_estimated_size_loop()
+        )
 
         self.pending_payments = asyncio.Queue()
 
@@ -217,12 +220,14 @@ class Pool:
             self.submit_payment_loop_task.cancel()
         if self.get_peak_loop_task is not None:
             self.get_peak_loop_task.cancel()
+        if self.pool_estimated_size_loop_task is not None:
+            self.pool_estimated_size_loop_task.cancel()
 
         self.wallet_rpc_client.close()
         await self.wallet_rpc_client.await_closed()
         self.node_rpc_client.close()
         await self.node_rpc_client.await_closed()
-        await self.store.connection.close()
+        await self.store.close()
 
     async def get_peak_loop(self):
         """

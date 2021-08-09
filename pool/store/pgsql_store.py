@@ -35,6 +35,10 @@ class PgsqlPoolStore(AbstractPoolStore):
             f'dbname={self.pool_config["database_name"]}'
         )
 
+    async def close(self):
+        self.pool.close()
+        await self.pool.wait_closed()
+
     @staticmethod
     def _row_to_farmer_record(row) -> FarmerRecord:
         return FarmerRecord(
@@ -260,3 +264,9 @@ class PgsqlPoolStore(AbstractPoolStore):
             i[0] for i in
             await self._execute("SELECT singleton FROM block")
         ]
+
+    async def set_pool_size(self, size: int) -> None:
+        await self._execute(
+            "INSERT INTO space (date, size) VALUES (NOW(), %s)",
+            (size,)
+        )
