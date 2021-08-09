@@ -62,7 +62,7 @@ class PgsqlPoolStore(AbstractPoolStore):
                 exists = await cursor.fetchone()
                 if not exists:
                     await cursor.execute(
-                        "INSERT INTO farmer (launcher_id, p2_singleton_puzzle_hash, delay_time, delay_puzzle_hash, authentication_public_key, singleton_tip, singleton_tip_state, points, difficulty, payout_instructions, is_pool_member, estimated_size, points_pplns, share_pplns) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, 0, 0)",
+                        "INSERT INTO farmer (launcher_id, p2_singleton_puzzle_hash, delay_time, delay_puzzle_hash, authentication_public_key, singleton_tip, singleton_tip_state, points, difficulty, payout_instructions, is_pool_member, estimated_size, points_pplns, share_pplns, joined_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, 0, 0, NOW())",
                         (
                             farmer_record.launcher_id.hex(),
                             farmer_record.p2_singleton_puzzle_hash.hex(),
