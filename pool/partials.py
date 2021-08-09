@@ -85,9 +85,7 @@ class PartialsCache(dict):
                     filter(lambda x: x[0] >= last_time_target, self[launcher_id].partials),
                 ))
 
-            estimated_size = self.partials.calculate_estimated_size(
-                points, self.pool_config['time_target']
-            )
+            estimated_size = self.partials.calculate_estimated_size(points)
 
             share_pplns = Decimal(points) / Decimal(self.all.points)
             logger.info(
