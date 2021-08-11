@@ -67,6 +67,7 @@ class PoolServer:
         # We load our configurations from here
         with open(pool_config_path) as f:
             pool_config: Dict = yaml.safe_load(f)
+            pool_config['__path__'] = os.path.abspath(pool_config_path)
 
         self.log = logging.getLogger(__name__)
         self.pool = Pool(config, pool_config, constants, pool_store)
