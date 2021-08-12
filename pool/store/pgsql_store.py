@@ -186,11 +186,15 @@ class PgsqlPoolStore(AbstractPoolStore):
             ret.append((total_points, ph))
         return ret
 
-    async def get_launcher_id_and_payout_instructions(self) -> dict:
+    async def get_launcher_id_and_payout_instructions(self, reward_system) -> dict:
+        if reward_system == 'PPLNS':
+            field = 'points_pplns'
+        else:
+            field = 'points'
         return {
             i[0]: bytes32(bytes.fromhex(i[1]))
             for i in await self._execute(
-                'SELECT launcher_id, payout_instructions FROM farmer WHERE points > 0'
+                f'SELECT launcher_id, payout_instructions FROM farmer WHERE {field} > 0'
             )
         }
 

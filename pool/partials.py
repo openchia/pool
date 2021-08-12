@@ -199,7 +199,9 @@ class Partials(object):
         ]
 
     async def get_farmer_points_and_payout_instructions(self):
-        launcher_id_and_ph = await self.store.get_launcher_id_and_payout_instructions()
+        launcher_id_and_ph = await self.store.get_launcher_id_and_payout_instructions(
+            self.pool_config.get('reward_system')
+        )
         points_and_ph = []
         async with self.cache:
             for launcher_id, points_interval in self.cache.items():
