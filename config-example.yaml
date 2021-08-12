@@ -39,7 +39,7 @@ server:
   server_ssl_key: config/ssl/domain/domain_srv.key
 #hooks:
 #  absorb: ./hooks/discord_absorb.py
-#  missing_partials: missing_partials.py
+#  missing_partials: ./hooks/missing_partials.py
 #hook_discord_absorb:
 #  url: https://discord.com/api/webhooks/XXX/XXX
 #  username: MyBot
