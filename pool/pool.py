@@ -85,7 +85,7 @@ class Pool:
         self.constants = constants
 
         self.store: AbstractPoolStore = pool_store or PgsqlPoolStore(pool_config)
-        self.partials = Partials(self.store, config, pool_config)
+        self.partials = Partials(self)
 
         self.pool_fee = pool_config["pool_fee"]
 
@@ -212,6 +212,9 @@ class Pool:
         self.pool_estimated_size_loop_task = asyncio.create_task(
             self.partials.pool_estimated_size_loop()
         )
+        self.missing_partials_loop_task = asyncio.create_task(
+            self.partials.missing_partials_loop()
+        )
 
         self.pending_payments = asyncio.Queue()
 
@@ -228,6 +231,8 @@ class Pool:
             self.get_peak_loop_task.cancel()
         if self.pool_estimated_size_loop_task is not None:
             self.pool_estimated_size_loop_task.cancel()
+        if self.missing_partials_loop_task is not None:
+            self.missing_partials_loop_task.cancel()
 
         self.wallet_rpc_client.close()
         await self.wallet_rpc_client.await_closed()

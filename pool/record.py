@@ -22,3 +22,4 @@ class FarmerRecord(Streamable):
     difficulty: uint64  # Current difficulty for this farmer
     payout_instructions: str  # This is where the pool will pay out rewards to the farmer
     is_pool_member: bool  # If the farmer leaves the pool, this gets set to False
+    email: str

@@ -3,8 +3,6 @@ import itertools
 import logging
 import time
 
-from .store.abstract import AbstractPoolStore
-
 from chia.types.blockchain_format.sized_bytes import bytes32
 from chia.util.ints import uint64
 from decimal import Decimal
@@ -102,18 +100,19 @@ class PartialsCache(dict):
 
 class Partials(object):
 
-    def __init__(self, store: AbstractPoolStore, config, pool_config):
-        self.store = store
-        self.config = config
-        self.pool_config = pool_config
+    def __init__(self, pool):
+        self.pool = pool
+        self.store = pool.store
+        self.config = pool.config
+        self.pool_config = pool.pool_config
         # By default keep partials for the last day
-        self.keep_interval = pool_config.get('pplns_interval', 86400)
+        self.keep_interval = pool.pool_config.get('pplns_interval', 86400)
 
         self.cache = PartialsCache(
             partials=self,
-            store=store,
-            config=config,
-            pool_config=pool_config,
+            store=self.store,
+            config=self.config,
+            pool_config=self.pool_config,
             keep_interval=self.keep_interval,
         )
 
@@ -127,7 +126,7 @@ class Partials(object):
             self.cache.all.add(t, d, remove=False)
 
     def calculate_estimated_size(self, points):
-        estimated_size = int(points / (self.pool_config['time_target'] * 1.088e-15))
+        estimated_size = int(points / (self.pool_config['time_target'] * 1.0881482400062102e-15))
         if self.config['full_node']['selected_network'] == 'testnet7':
             estimated_size = int(estimated_size / 14680000)
         return estimated_size
@@ -143,6 +142,43 @@ class Partials(object):
             except Exception:
                 logger.error('Unexpected error in pool_estimated_size_loop', exc_info=True)
             await asyncio.sleep(60 * 30)
+
+    async def missing_partials_loop(self):
+        """
+        Loop to check for launchers that suddenly stopped sending partials
+        """
+        seen = {}
+        while True:
+            try:
+                new = []
+                one_hour_ago = time.time() - 3600
+                for launcher_id, pi in self.cache.items():
+                    if pi.partials and pi.partials[-1][0] < one_hour_ago:
+                        if launcher_id not in seen:
+                            new.append(launcher_id)
+                        seen[launcher_id] = pi.partials[-1][0]
+                    else:
+                        seen.pop(launcher_id, None)
+
+                if new:
+                    logger.debug('%d launchers stopped sending partials.', len(new))
+                    farmer_records = await self.store.get_farmer_records([
+                        ('email', 'IS NOT NULL', None),
+                        ('notify_missing_partials_hours', 'IS NOT NULL', None),
+                        ('notify_missing_partials_hours', '>', 0),
+                    ])
+                    farmer_records = dict(
+                        filter(lambda x: x[0] in new, farmer_records.items())
+                    )
+                    await self.pool.run_hook('missing_partials', farmer_records)
+                else:
+                    logger.debug('No launchers stopped sending partials.')
+            except asyncio.CancelledError:
+                logger.info('Cancelled missing_partials_loop')
+                break
+            except Exception:
+                logger.error('Unexpected error in missing_partials_loop', exc_info=True)
+            await asyncio.sleep(3600)
 
     async def add_partial(self, launcher_id: bytes32, timestamp: uint64, difficulty: uint64, error: Optional[str] = None):
 

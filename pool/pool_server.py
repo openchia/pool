@@ -291,10 +291,11 @@ async def stop():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', default=f'{os.getcwd()}/config.yaml')
+    parser.add_argument('--log-level', default='INFO')
 
     args = parser.parse_args()
 
-    logging.root.setLevel(logging.INFO)
+    logging.root.setLevel(getattr(logging, args.log_level))
 
     logging.config.dictConfig({
         "version": 1,
@@ -306,7 +307,7 @@ def main():
         },
         "handlers": {
             "console": {
-                "level": "INFO",
+                "level": args.log_level,
                 "class": "logging.StreamHandler",
                 "stream": "ext://sys.stdout",
                 "formatter": "console",

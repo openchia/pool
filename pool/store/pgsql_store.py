@@ -53,6 +53,7 @@ class PgsqlPoolStore(AbstractPoolStore):
             row[8],
             row[9],
             True if row[10] == 1 else False,
+            row[11],
         )
 
     async def add_farmer_record(self, farmer_record: FarmerRecord, metadata: RequestMetadata):
@@ -103,6 +104,27 @@ class PgsqlPoolStore(AbstractPoolStore):
         if not row or not row[0]:
             return None
         return self._row_to_farmer_record(row[0])
+
+    async def get_farmer_records(self, filters) -> Optional[FarmerRecord]:
+        args = []
+        where = []
+        for k, op, v in filters:
+            if op.lower() not in ('is not null', 'is null', '>', '=', '<', '>=', '<='):
+                continue
+            if op.lower() not in ('is not null', 'is null'):
+                where.append(f'{k} {op} %s')
+                args.append(v)
+            else:
+                where.append(f'{k} {op}')
+
+        fields = ', '.join((FarmerRecord.__annotations__.keys()))
+        return {
+            i[0]: self._row_to_farmer_record(i)
+            for i in await self._execute(
+                f"SELECT {fields} FROM farmer WHERE {' AND '.join(where)}",
+                args,
+            )
+        }
 
     async def update_estimated_size_and_pplns(self, launcher_id: str, size: int, points: int, share: Decimal):
         await self._execute(
