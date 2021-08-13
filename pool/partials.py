@@ -164,11 +164,11 @@ class Partials(object):
                     logger.debug('%d launchers stopped sending partials.', len(new))
                     farmer_records = {}
                     six_hours_ago = time.time() - 3600 * 6
-                    for launcher_id, rec in await self.store.get_farmer_records([
+                    for launcher_id, rec in (await self.store.get_farmer_records([
                         ('email', 'IS NOT NULL', None),
                         ('notify_missing_partials_hours', 'IS NOT NULL', None),
                         ('notify_missing_partials_hours', '>', 0),
-                    ]).items():
+                    ])).items():
                         last_seen = new.get(launcher_id)
                         if not last_seen:
                             continue
