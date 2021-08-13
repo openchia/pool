@@ -150,26 +150,34 @@ class Partials(object):
         seen = {}
         while True:
             try:
-                new = []
+                new = {}
                 one_hour_ago = time.time() - 3600
                 for launcher_id, pi in self.cache.items():
                     if pi.partials and pi.partials[-1][0] < one_hour_ago:
                         if launcher_id not in seen:
-                            new.append(launcher_id)
+                            new[launcher_id] = pi.partials[-1][0]
                         seen[launcher_id] = pi.partials[-1][0]
                     else:
                         seen.pop(launcher_id, None)
 
                 if new:
                     logger.debug('%d launchers stopped sending partials.', len(new))
-                    farmer_records = await self.store.get_farmer_records([
+                    farmer_records = {}
+                    six_hours_ago = time.time() - 3600 * 6
+                    for launcher_id, rec in await self.store.get_farmer_records([
                         ('email', 'IS NOT NULL', None),
                         ('notify_missing_partials_hours', 'IS NOT NULL', None),
                         ('notify_missing_partials_hours', '>', 0),
-                    ])
-                    farmer_records = dict(
-                        filter(lambda x: x[0] in new, farmer_records.items())
-                    )
+                    ]).items():
+                        last_seen = new.get(launcher_id)
+                        if not last_seen:
+                            continue
+                        # Farmers with low space (less than 300GiB) can take up to six hours
+                        # to send partials
+                        if rec.estimated_size < 322122547200:  # 300GiB
+                            if last_seen > six_hours_ago:
+                                continue
+                        farmer_records[launcher_id] = rec
                     await self.pool.run_hook('missing_partials', farmer_records)
                 else:
                     logger.debug('No launchers stopped sending partials.')
