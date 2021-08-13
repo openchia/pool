@@ -161,7 +161,6 @@ class Partials(object):
                         seen.pop(launcher_id, None)
 
                 if new:
-                    logger.debug('%d launchers stopped sending partials.', len(new))
                     farmer_records = {}
                     six_hours_ago = time.time() - 3600 * 6
                     for launcher_id, rec in (await self.store.get_farmer_records([
@@ -178,7 +177,9 @@ class Partials(object):
                             if last_seen > six_hours_ago:
                                 continue
                         farmer_records[launcher_id] = rec
-                    await self.pool.run_hook('missing_partials', farmer_records)
+                    if farmer_records:
+                        logger.debug('%d launchers stopped sending partials.', len(farmer_records))
+                        await self.pool.run_hook('missing_partials', farmer_records)
                 else:
                     logger.debug('No launchers stopped sending partials.')
             except asyncio.CancelledError:
