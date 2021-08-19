@@ -64,7 +64,9 @@ class PgsqlPoolStore(AbstractPoolStore):
                 exists = await cursor.fetchone()
                 if not exists:
                     await cursor.execute(
-                        "INSERT INTO farmer (launcher_id, p2_singleton_puzzle_hash, delay_time, delay_puzzle_hash, authentication_public_key, singleton_tip, singleton_tip_state, points, difficulty, payout_instructions, is_pool_member, estimated_size, points_pplns, share_pplns, joined_at) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, 0, 0, NOW())",
+                        "INSERT INTO farmer ("
+                        "launcher_id, p2_singleton_puzzle_hash, delay_time, delay_puzzle_hash, authentication_public_key, singleton_tip, singleton_tip_state, points, difficulty, payout_instructions, is_pool_member, estimated_size, points_pplns, share_pplns, joined_at) VALUES ("
+                        "%s,          %s,                       %s,         %s,                %s,                        %s,            %s,                  0,      %s,         %s,                  %s,             0,              0,            0,           NOW())",
                         (
                             farmer_record.launcher_id.hex(),
                             farmer_record.p2_singleton_puzzle_hash.hex(),
@@ -73,14 +75,13 @@ class PgsqlPoolStore(AbstractPoolStore):
                             bytes(farmer_record.authentication_public_key).hex(),
                             bytes(farmer_record.singleton_tip),
                             bytes(farmer_record.singleton_tip_state),
-                            int(farmer_record.points),
                             int(farmer_record.difficulty),
                             farmer_record.payout_instructions,
                             bool(farmer_record.is_pool_member),
                         ),
                     )
                     await cursor.execute(
-                        "UPDATE farmer SET p2_singleton_puzzle_hash = %s, delay_time = %s, delay_puzzle_hash = %s, authentication_public_key = %s, singleton_tip = %s, singleton_tip_state = %s, points = %s, difficulty = %s, payout_instructions = %s, is_pool_member = %s WHERE launcher_id = %s",
+                        "UPDrTE farmer SET p2_singleton_puzzle_hash = %s, delay_time = %s, delay_puzzle_hash = %s, authentication_public_key = %s, singleton_tip = %s, singleton_tip_state = %s, difficulty = %s, payout_instructions = %s, is_pool_member = %s WHERE launcher_id = %s",
                         (
                             farmer_record.p2_singleton_puzzle_hash.hex(),
                             farmer_record.delay_time,
@@ -88,7 +89,6 @@ class PgsqlPoolStore(AbstractPoolStore):
                             bytes(farmer_record.authentication_public_key).hex(),
                             bytes(farmer_record.singleton_tip),
                             bytes(farmer_record.singleton_tip_state),
-                            int(farmer_record.points),
                             int(farmer_record.difficulty),
                             farmer_record.payout_instructions,
                             bool(farmer_record.is_pool_member),
