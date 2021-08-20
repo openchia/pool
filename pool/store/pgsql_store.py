@@ -294,7 +294,7 @@ class PgsqlPoolStore(AbstractPoolStore):
         return [{
             "id": i[0],
             "payout_id": i[1],
-            "puzzle_hash": i[2],
+            "puzzle_hash": bytes32(bytes.fromhex(i[2])),
             "amount": i[3],
         } for i in await self._execute(
             "SELECT id, payout_id, puzzle_hash, amount FROM payout_address WHERE transaction IS NULL LIMIT %s" % limit,
