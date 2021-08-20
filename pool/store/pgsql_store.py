@@ -278,7 +278,7 @@ class PgsqlPoolStore(AbstractPoolStore):
             )
         return payout_id
 
-    async def add_transaction(self, payout_id: int, transaction, payment_targets) -> None:
+    async def add_transaction(self, transaction, payment_targets) -> None:
         ids = [i['id'] for i in payment_targets]
         await self._execute(
             "UPDATE payout_address SET transaction = %s WHERE id IN %s",

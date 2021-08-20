@@ -509,7 +509,7 @@ class Pool:
                     continue
 
                 payment_targets = await self.store.get_pending_payment_targets(self.max_additions_per_transaction)
-                if not payments_targets:
+                if not payment_targets:
                     await asyncio.sleep(60)
                     continue
 
@@ -529,7 +529,7 @@ class Pool:
                     continue
 
                 self.log.info(f"Transaction: {transaction}")
-                await self.store.add_transaction(payout_id, transaction, payment_targets)
+                await self.store.add_transaction(transaction, payment_targets)
 
                 while (
                     not transaction.confirmed
