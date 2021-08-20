@@ -482,7 +482,7 @@ class Pool:
                         for points, ph in points_and_ph:
                             if points > 0:
                                 additions_sub_list.append({"puzzle_hash": ph, "amount": points * mojo_per_point})
-                        await self.store.add_payout(coin_records, total_amount_claimed, pool_coin_amount)
+                        await self.store.add_payout(coin_records, total_amount_claimed, pool_coin_amount, additions_sub_list)
 
                         # Subtract the points from each farmer
                         await self.store.clear_farmer_points()
