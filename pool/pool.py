@@ -431,8 +431,8 @@ class Pool:
                     await asyncio.sleep(60)
                     continue
 
-                if self.pending_payments.qsize() != 0:
-                    self.log.warning(f"Pending payments ({self.pending_payments.qsize()}), waiting")
+                if await self.store.pending_payment_targets_exists():
+                    self.log.warning(f"Pending payments, waiting")
                     await asyncio.sleep(60)
                     continue
 
@@ -476,29 +476,13 @@ class Pool:
                         mojo_per_point = floor(amount_to_distribute / total_points)
                         self.log.info(f"Paying out {mojo_per_point} mojo / point")
 
-                        payout_id = await self.store.add_payout(coin_records, total_amount_claimed, pool_coin_amount)
-
                         additions_sub_list: List[Dict] = [
                             {"puzzle_hash": self.pool_fee_puzzle_hash, "amount": pool_coin_amount}
                         ]
                         for points, ph in points_and_ph:
                             if points > 0:
                                 additions_sub_list.append({"puzzle_hash": ph, "amount": points * mojo_per_point})
-
-                            if len(additions_sub_list) == self.max_additions_per_transaction:
-                                await self.pending_payments.put({
-                                    "payout_id": payout_id,
-                                    "additions": additions_sub_list.copy()
-                                })
-                                self.log.info(f"Will make payments: {additions_sub_list}")
-                                additions_sub_list = []
-
-                        if len(additions_sub_list) > 0:
-                            self.log.info(f"Will make payments: {additions_sub_list}")
-                            await self.pending_payments.put({
-                                "payout_id": payout_id,
-                                "additions": additions_sub_list.copy()
-                            })
+                        await self.store.add_payout(coin_records, total_amount_claimed, pool_coin_amount)
 
                         # Subtract the points from each farmer
                         await self.store.clear_farmer_points()
@@ -524,10 +508,10 @@ class Pool:
                     await asyncio.sleep(60)
                     continue
 
-                payment_targets_orig = await self.pending_payments.get()
-                payout_id = payment_targets_orig["payout_id"]
-                payment_targets = payment_targets_orig["additions"]
-                assert len(payment_targets) > 0
+                payment_targets = await self.store.get_pending_payment_targets(self.max_additions_per_transaction)
+                if not payments_targets:
+                    await asyncio.sleep(60)
+                    continue
 
                 self.log.info(f"Submitting a payment: {payment_targets}")
 
@@ -542,7 +526,6 @@ class Pool:
                 except ValueError as e:
                     self.log.error(f"Error making payment: {e}")
                     await asyncio.sleep(10)
-                    await self.pending_payments.put(payment_targets_orig)
                     continue
 
                 self.log.info(f"Transaction: {transaction}")
