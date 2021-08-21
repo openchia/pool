@@ -249,6 +249,7 @@ class Partials(object):
             self.pool_config.get('reward_system')
         )
         points_and_ph = []
+        await self.cache.scrub()
         async with self.cache:
             for launcher_id, points_interval in self.cache.items():
                 if points_interval.points == 0:
