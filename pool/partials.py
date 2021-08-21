@@ -233,7 +233,7 @@ class Partials(object):
             await self.cache.add(launcher_id.hex(), timestamp, difficulty)
 
         if next(self.additions) % 10 == 0:
-            await self.cache.scrub()
+            await self.scrub()
 
     async def get_recent_partials(self, launcher_id: bytes32, number_of_partials: int):
         """
@@ -249,7 +249,7 @@ class Partials(object):
             self.pool_config.get('reward_system')
         )
         points_and_ph = []
-        await self.cache.scrub()
+        await self.scrub()
         async with self.cache:
             for launcher_id, points_interval in self.cache.items():
                 if points_interval.points == 0:
