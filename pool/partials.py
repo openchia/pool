@@ -141,6 +141,7 @@ class Partials(object):
         for lid, t, d in await self.store.get_recent_partials(start_time):
             self.cache[lid].add(t, d, remove=False)
             self.cache.all.add(t, d, remove=False)
+        await self.store.scrub_pplns(start_time)
 
     def calculate_estimated_size(self, points):
         estimated_size = int(points / (self.pool_config['time_target'] * 1.0881482400062102e-15))
