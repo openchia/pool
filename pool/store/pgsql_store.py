@@ -327,3 +327,17 @@ class PgsqlPoolStore(AbstractPoolStore):
             ")",
             (start_time,)
         )
+
+    async def set_globalinfo(self, attrs: Dict) -> None:
+        args = []
+        sql = []
+        for i in (
+            'xch_current_price',
+            'blockchain_height',
+            'blockchain_space',
+            'blockchain_avg_block_time',
+        ):
+            if i in attrs:
+                sql.append(f'{i} = %s')
+                args.append(attrs[i])
+        await self._execute(f"UPDATE globalinfo SET {', '.join(sql)}", args)

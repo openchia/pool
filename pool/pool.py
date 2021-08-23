@@ -54,6 +54,7 @@ from .store.abstract import AbstractPoolStore
 from .store.pgsql_store import PgsqlPoolStore
 from .record import FarmerRecord
 from .util import error_dict, RequestMetadata
+from .xchprice import XCHPrice
 
 logger = logging.getLogger('pool')
 
@@ -176,6 +177,9 @@ class Pool:
         self.create_payment_loop_task: Optional[asyncio.Task] = None
         self.submit_payment_loop_task: Optional[asyncio.Task] = None
         self.get_peak_loop_task: Optional[asyncio.Task] = None
+        self.pool_estimated_size_loop_task: Optional[asyncio.Task] = None
+        self.missing_partials_loop_task: Optional[asyncio.Task] = None
+        self.xchprice_loop_task: Optional[asyncio.Task] = None
 
         self.node_rpc_client: Optional[FullNodeRpcClient] = None
         self.node_rpc_port = pool_config["node_rpc_port"]
@@ -215,6 +219,7 @@ class Pool:
         self.missing_partials_loop_task = asyncio.create_task(
             self.partials.missing_partials_loop()
         )
+        self.xchprice_loop_task = asyncio.create_task(XCHPrice(self.store).loop())
 
         self.pending_payments = asyncio.Queue()
 
@@ -233,6 +238,8 @@ class Pool:
             self.pool_estimated_size_loop_task.cancel()
         if self.missing_partials_loop_task is not None:
             self.missing_partials_loop_task.cancel()
+        if self.xchprice_loop_task is not None:
+            self.xchprice_loop_task.cancel()
 
         self.wallet_rpc_client.close()
         await self.wallet_rpc_client.await_closed()
@@ -290,13 +297,16 @@ class Pool:
             try:
                 self.blockchain_state = await self.node_rpc_client.get_blockchain_state()
                 self.wallet_synced = await self.wallet_rpc_client.get_synced()
-                await asyncio.sleep(30)
+                asyncio.create_task(self.store.set_globalinfo({
+                    'blockchain_height': self.blockchain_state['peak'].height,
+                    'blockchain_space': self.blockchain_state['space'],
+                }))
             except asyncio.CancelledError:
                 self.log.info("Cancelled get_peak_loop, closing")
                 return
             except Exception as e:
                 self.log.error(f"Unexpected error in get_peak_loop: {e}", exc_info=True)
-                await asyncio.sleep(30)
+            await asyncio.sleep(30)
 
     async def collect_pool_rewards_loop(self):
         """
