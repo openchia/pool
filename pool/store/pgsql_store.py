@@ -172,7 +172,7 @@ class PgsqlPoolStore(AbstractPoolStore):
         return [self._row_to_farmer_record(row) for row in rows]
 
     async def get_farmer_points_and_payout_instructions(self) -> List[Tuple[uint64, bytes]]:
-        rows = await self._execute("SELECT points, payout_instructions from farmer")
+        rows = await self._execute("SELECT points, payout_instructions FROM farmer WHERE is_pool_member = true")
         accumulated: Dict[bytes32, uint64] = {}
         for row in rows:
             points: uint64 = uint64(row[0])
