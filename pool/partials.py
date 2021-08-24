@@ -224,6 +224,13 @@ class Partials(object):
                 logger.error('Unexpected error in missing_partials_loop', exc_info=True)
             await asyncio.sleep(3600)
 
+    async def remove_launcher(self, launcher_id: bytes32):
+        lid = launcher_id.hex()
+        if lid not in self.cache:
+            return
+        async with self.cache:
+            self.cache.pop(lid, None)
+
     async def add_partial(self, launcher_id: bytes32, timestamp: uint64, difficulty: uint64, error: Optional[str] = None):
 
         # Add to database

@@ -849,6 +849,9 @@ class Pool:
 
         self.log.debug(f"Is {launcher_id} pool member: {is_pool_member}")
 
+        if not is_pool_member:
+            await self.partials.remove_launcher(launcher_id)
+
         if farmer_rec is not None and (
             farmer_rec.singleton_tip != buried_singleton_tip
             or farmer_rec.singleton_tip_state != buried_singleton_tip_state

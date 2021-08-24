@@ -219,8 +219,9 @@ class PgsqlPoolStore(AbstractPoolStore):
 
     async def get_recent_partials(self, start_time) -> List[Tuple[str, int, int]]:
         rows = await self._execute(
-            "SELECT launcher_id, timestamp, difficulty FROM partial "
-            "WHERE timestamp >= %s AND error IS NULL ORDER BY timestamp ASC",
+            "SELECT p.launcher_id, p.timestamp, p.difficulty FROM partial p "
+            "JOIN farmer f ON p.launcher_id = f.launcher_id "
+            "WHERE p.timestamp >= %s AND p.error IS NULL AND f.is_pool_member = true ORDER BY p.timestamp ASC",
             (start_time, ),
         )
         ret: List[Tuple[str, int, int]] = [
