@@ -81,7 +81,7 @@ class PgsqlPoolStore(AbstractPoolStore):
                         ),
                     )
                     await cursor.execute(
-                        "UPDrTE farmer SET p2_singleton_puzzle_hash = %s, delay_time = %s, delay_puzzle_hash = %s, authentication_public_key = %s, singleton_tip = %s, singleton_tip_state = %s, difficulty = %s, payout_instructions = %s, is_pool_member = %s WHERE launcher_id = %s",
+                        "UPDATE farmer SET p2_singleton_puzzle_hash = %s, delay_time = %s, delay_puzzle_hash = %s, authentication_public_key = %s, singleton_tip = %s, singleton_tip_state = %s, difficulty = %s, payout_instructions = %s, is_pool_member = %s WHERE launcher_id = %s",
                         (
                             farmer_record.p2_singleton_puzzle_hash.hex(),
                             farmer_record.delay_time,
