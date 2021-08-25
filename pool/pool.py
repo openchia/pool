@@ -627,8 +627,13 @@ class Pool:
 
             _, _, is_member = singleton_state_tuple
             if not is_member:
-                self.log.info(f"Singleton is not assigned to this pool")
+                self.log.info("Singleton is not assigned to this pool")
                 await self.partials.add_partial(partial.payload.launcher_id, uint64(int(time.time())), points_received, 'SINGLETON_NOT_POOL')
+                farmer_record: Optional[FarmerRecord] = await self.store.get_farmer_record(partial.payload.launcher_id)
+                if farmer_record and farmer_record.is_pool_member:
+                    self.log.info("Updating is_pool_member to false for %r", farmer_record.launcher_id.hex())
+                    farmer_record.is_pool_member = False
+                    await self.store.add_farmer_record(farmer_record, None)
                 return
 
             async with self.store.lock:
