@@ -1,4 +1,5 @@
 import asyncio
+import bisect
 import itertools
 import logging
 import time
@@ -21,7 +22,7 @@ class PartialsInterval(object):
         return f'<PartialsInterval[{self.points}]>'
 
     def add(self, timestamp, difficulty, remove=True):
-        self.partials.append((timestamp, difficulty))
+        bisect.insort(self.partials, (timestamp, difficulty))
         self.points += difficulty
         self.last_update = int(time.time())
 
@@ -32,8 +33,9 @@ class PartialsInterval(object):
 
     def add_partials(self, pi):
         self.partials += pi.partials
-        self.points += len(pi.partials)
-        self.partials = sorted(self.partials)
+        self.points += pi.points
+        self.partials.sort()
+        self.last_update = int(time.time())
 
     def changed_recently(self, time):
         if self.last_update > time - 60 * 10:
