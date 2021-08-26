@@ -352,7 +352,7 @@ class Pool:
 
                 # For each p2sph, get the FarmerRecords
                 farmer_records = await self.store.get_farmer_records_for_p2_singleton_phs(
-                    set(ph for ph in ph_to_amounts.keys())
+                    set(ph_to_amounts.keys())
                 )
 
                 # For each singleton, create, submit, and save a claim transaction
