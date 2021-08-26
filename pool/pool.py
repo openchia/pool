@@ -589,7 +589,7 @@ class Pool:
             except Exception as e:
                 self.log.error(f"Unexpected error: {e}")
 
-    async def check_and_confirm_partial(self, partial: PostPartialRequest, time_received: unit64, points_received: uint64) -> None:
+    async def check_and_confirm_partial(self, partial: PostPartialRequest, time_received: uint64, points_received: uint64) -> None:
         try:
             # TODO(pool): these lookups to the full node are not efficient and can be cached, especially for
             #  scaling to many users
