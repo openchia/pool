@@ -30,7 +30,7 @@ class PartialsInterval(object):
 
         return next(self.additions)
 
-    def add_partials(self, pi: PartialsInterval):
+    def add_partials(self, pi):
         self.partials += pi.partials
         self.points += len(pi.partials)
         self.partials = sorted(self.partials)
