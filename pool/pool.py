@@ -582,14 +582,14 @@ class Pool:
                 await asyncio.sleep((max(0, time_received + self.partial_confirmation_delay - time.time() - 5)))
 
                 # Starts a task to check the remaining things for this partial and optionally update points
-                asyncio.create_task(self.check_and_confirm_partial(partial, points_received))
+                asyncio.create_task(self.check_and_confirm_partial(partial, time_received, points_received))
             except asyncio.CancelledError:
                 self.log.info("Cancelled confirm partials loop, closing")
                 return
             except Exception as e:
                 self.log.error(f"Unexpected error: {e}")
 
-    async def check_and_confirm_partial(self, partial: PostPartialRequest, points_received: uint64) -> None:
+    async def check_and_confirm_partial(self, partial: PostPartialRequest, time_received: unit64, points_received: uint64) -> None:
         try:
             # TODO(pool): these lookups to the full node are not efficient and can be cached, especially for
             #  scaling to many users
@@ -597,13 +597,13 @@ class Pool:
                 response = await self.node_rpc_client.get_recent_signage_point_or_eos(None, partial.payload.sp_hash)
                 if response is None or response["reverted"]:
                     self.log.info(f"Partial EOS reverted: {partial.payload.sp_hash}")
-                    await self.partials.add_partial(partial.payload.launcher_id, uint64(int(time.time())), points_received, 'EOS_REVERTED')
+                    await self.partials.add_partial(partial.payload.launcher_id, time_received, points_received, 'EOS_REVERTED')
                     return
             else:
                 response = await self.node_rpc_client.get_recent_signage_point_or_eos(partial.payload.sp_hash, None)
                 if response is None or response["reverted"]:
                     self.log.info(f"Partial SP reverted: {partial.payload.sp_hash}")
-                    await self.partials.add_partial(partial.payload.launcher_id, uint64(int(time.time())), points_received, 'SP_REVERTED')
+                    await self.partials.add_partial(partial.payload.launcher_id, time_received, points_received, 'SP_REVERTED')
                     return
 
             # Now we know that the partial came on time, but also that the signage point / EOS is still in the
@@ -611,7 +611,7 @@ class Pool:
             pos_hash = partial.payload.proof_of_space.get_hash()
             if self.recent_points_added.get(pos_hash):
                 self.log.info(f"Double signage point submitted for proof: {partial.payload}")
-                await self.partials.add_partial(partial.payload.launcher_id, uint64(int(time.time())), points_received, 'DOUBLE_SIGNAGE_POINT')
+                await self.partials.add_partial(partial.payload.launcher_id, time_received, points_received, 'DOUBLE_SIGNAGE_POINT')
                 return
             self.recent_points_added.put(pos_hash, uint64(1))
 
@@ -622,13 +622,13 @@ class Pool:
 
             if singleton_state_tuple is None:
                 self.log.info(f"Invalid singleton {partial.payload.launcher_id}")
-                await self.partials.add_partial(partial.payload.launcher_id, uint64(int(time.time())), points_received, 'INVALID_SINGLETON')
+                await self.partials.add_partial(partial.payload.launcher_id, time_received, points_received, 'INVALID_SINGLETON')
                 return
 
             _, _, is_member = singleton_state_tuple
             if not is_member:
                 self.log.info("Singleton is not assigned to this pool")
-                await self.partials.add_partial(partial.payload.launcher_id, uint64(int(time.time())), points_received, 'SINGLETON_NOT_POOL')
+                await self.partials.add_partial(partial.payload.launcher_id, time_received, points_received, 'SINGLETON_NOT_POOL')
                 farmer_record: Optional[FarmerRecord] = await self.store.get_farmer_record(partial.payload.launcher_id)
                 if farmer_record and farmer_record.is_pool_member:
                     self.log.info("Updating is_pool_member to false for %r", farmer_record.launcher_id.hex())
@@ -644,7 +644,7 @@ class Pool:
                 )
 
                 if farmer_record.is_pool_member:
-                    await self.partials.add_partial(partial.payload.launcher_id, uint64(int(time.time())), points_received)
+                    await self.partials.add_partial(partial.payload.launcher_id, time_received, points_received)
                     self.log.info(
                         f"Farmer {farmer_record.launcher_id} updated points to: "
                         f"{farmer_record.points + points_received}"
