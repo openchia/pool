@@ -634,6 +634,7 @@ class Pool:
                     self.log.info("Updating is_pool_member to false for %r", farmer_record.launcher_id.hex())
                     farmer_record.is_pool_member = False
                     await self.store.add_farmer_record(farmer_record, None)
+                await self.partials.remove_launcher(launcher_id)
                 return
 
             async with self.store.lock:

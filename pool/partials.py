@@ -14,11 +14,8 @@ logger = logging.getLogger('partials')
 class PartialsInterval(object):
 
     def __init__(self, keep_interval):
-        self.partials = []
-        self.points = 0
-        self.additions = itertools.count()
         self.keep_interval = keep_interval
-        self.last_update = 0
+        self.clear()
 
     def __repr__(self):
         return f'<PartialsInterval[{self.points}]>'
@@ -33,10 +30,21 @@ class PartialsInterval(object):
 
         return next(self.additions)
 
+    def add_partials(self, pi: PartialsInterval):
+        self.partials += pi.partials
+        self.points += len(pi.partials)
+        self.partials = sorted(self.partials)
+
     def changed_recently(self, time):
         if self.last_update > time - 60 * 10:
             return True
         return False
+
+    def clear(self):
+        self.partials = []
+        self.points = 0
+        self.additions = itertools.count()
+        self.last_update = 0
 
     def scrub(self, now=None):
         drop_time = (now or int(time.time())) - self.keep_interval
@@ -154,7 +162,9 @@ class Partials(object):
             async with self.cache:
                 now = int(time.time())
                 to_update = []
+                self.cache.all.clear()
                 for launcher_id, points_interval in list(self.cache.items()):
+                    self.cache.all.add_partials(points_interval)
                     if not points_interval.changed_recently(now):
                         before = points_interval.points
                         if points_interval.scrub() == 0:
