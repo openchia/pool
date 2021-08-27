@@ -632,8 +632,11 @@ class Pool:
                 farmer_record: Optional[FarmerRecord] = await self.store.get_farmer_record(partial.payload.launcher_id)
                 if farmer_record and farmer_record.is_pool_member:
                     self.log.info("Updating is_pool_member to false for %r", farmer_record.launcher_id.hex())
-                    farmer_record.is_pool_member = False
-                    await self.store.add_farmer_record(farmer_record, None)
+                    farmer_dict = farmer_record.to_json_dict()
+                    farmer_dict['is_pool_member'] = False
+                    await self.store.add_farmer_record(
+                        FarmerRecord.from_json_dict(farmer_dict), None,
+                    )
                 await self.partials.remove_launcher(farmer_record.launcher_id)
                 return
 

@@ -87,7 +87,7 @@ class PartialsCache(dict):
         self._lock.release()
 
     async def add(self, launcher_id, timestamp, difficulty):
-        if launcher_id not in self:
+        if launcher_id not in self or self[launcher_id].points == 0:
             pi = self[launcher_id] = PartialsInterval(self.keep_interval)
             start_time = int(time.time()) - self.keep_interval
             recent_partials = await self.store.get_recent_partials(start_time, launcher_id)
