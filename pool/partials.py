@@ -97,7 +97,7 @@ class PartialsCache(dict):
             )
             for lid, t, d in recent_partials:
                 pi.add(t, d, remove=False)
-                self.cache.all.add(t, d, remove=False)
+                self.all.add(t, d, remove=False)
 
         async with self._lock:
             additions = self[launcher_id].add(timestamp, difficulty)
