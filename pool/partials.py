@@ -88,10 +88,15 @@ class PartialsCache(dict):
 
     async def add(self, launcher_id, timestamp, difficulty):
         if launcher_id not in self:
-            self[launcher_id] = PartialsInterval(self.keep_interval)
+            pi = self[launcher_id] = PartialsInterval(self.keep_interval)
             start_time = int(time.time()) - self.keep_interval
-            for lid, t, d in await self.store.get_recent_partials(start_time, launcher_id):
-                self[launcher_id].add(t, d, remove=False)
+            recent_partials = await self.store.get_recent_partials(start_time, launcher_id)
+            logger.info(
+                'Launcher %r not in cache, adding %d from database',
+                launcher_id, len(recent_partials),
+            )
+            for lid, t, d in recent_partials:
+                pi.add(t, d, remove=False)
                 self.cache.all.add(t, d, remove=False)
 
         async with self._lock:
@@ -170,13 +175,13 @@ class Partials(object):
                 to_update = []
                 self.cache.all.clear()
                 for launcher_id, points_interval in list(self.cache.items()):
-                    self.cache.all.add_partials(points_interval)
                     if not points_interval.changed_recently(now):
                         before = points_interval.points
                         if points_interval.scrub() == 0:
                             del self.cache[launcher_id]
                         if points_interval.points != before:
                             to_update.append(launcher_id)
+                    self.cache.all.add_partials(points_interval)
 
             now = int(time.time())
             for i in to_update:
@@ -246,6 +251,7 @@ class Partials(object):
             return
         async with self.cache:
             self.cache.pop(lid, None)
+        await self.scrub()
 
     async def add_partial(self, launcher_id: bytes32, timestamp: uint64, difficulty: uint64, error: Optional[str] = None):
 
