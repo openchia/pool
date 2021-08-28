@@ -4,6 +4,7 @@ from typing import Optional, Set, List, Tuple, Dict
 import aiopg
 from blspy import G1Element
 from chia.pools.pool_wallet_info import PoolState
+from chia.protocols.pool_protocol import PostPartialPayload
 from chia.types.blockchain_format.sized_bytes import bytes32
 from chia.types.coin_record import CoinRecord
 from chia.types.coin_spend import CoinSpend
@@ -202,19 +203,29 @@ class PgsqlPoolStore(AbstractPoolStore):
     async def clear_farmer_points(self) -> None:
         await self._execute("UPDATE farmer set points=0")
 
-    async def add_partial(self, launcher_id: bytes32, timestamp: uint64, difficulty: uint64, error: Optional[str] = None):
+    async def add_partial(self, partial_payload: PostPartialPayload, timestamp: uint64, difficulty: uint64, error: Optional[str] = None):
         async with self.pool.acquire() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute(
-                    "INSERT INTO partial (launcher_id, timestamp, difficulty, error) VALUES(%s, %s, %s, %s)",
-                    (launcher_id.hex(), timestamp, difficulty, error),
+                    "INSERT INTO partial ("
+                    " launcher_id, timestamp, difficulty, error, harvester_id"
+                    ") VALUES ("
+                    " %s,          %s,        %s,         %s,    %s"
+                    ")",
+                    (
+                        partial_payload.launcher_id.hex(),
+                        timestamp,
+                        difficulty,
+                        error,
+                        partial_payload.harvester_id.hex(),
+                    ),
                 )
 
             if error is None:
                 async with conn.cursor() as cursor:
                     await cursor.execute(
                         "UPDATE farmer SET points = points + %s WHERE launcher_id=%s",
-                        (difficulty, launcher_id.hex()),
+                        (difficulty, partial_payload.launcher_id.hex()),
                     )
 
     async def get_recent_partials(self, start_time, launcher_id: Optional[str] = None) -> List[Tuple[str, int, int]]:

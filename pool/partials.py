@@ -5,6 +5,7 @@ import logging
 import time
 
 from chia.cmds.farm_funcs import get_average_block_time
+from chia.protocols.pool_protocol import PostPartialPayload
 from chia.types.blockchain_format.sized_bytes import bytes32
 from chia.util.ints import uint64
 from decimal import Decimal
@@ -261,14 +262,14 @@ class Partials(object):
             self.cache.pop(lid, None)
         await self.scrub()
 
-    async def add_partial(self, launcher_id: bytes32, timestamp: uint64, difficulty: uint64, error: Optional[str] = None):
+    async def add_partial(self, partial_payload: PostPartialPayload, timestamp: uint64, difficulty: uint64, error: Optional[str] = None):
 
         # Add to database
-        await self.store.add_partial(launcher_id, timestamp, difficulty, error)
+        await self.store.add_partial(partial_payload, timestamp, difficulty, error)
 
         # Add to the cache and compute the estimated farm size if a successful partial
         if error is None:
-            await self.cache.add(launcher_id.hex(), timestamp, difficulty)
+            await self.cache.add(partial_payload.launcher_id.hex(), timestamp, difficulty)
 
         if next(self.additions) % 10 == 0:
             await self.scrub()
