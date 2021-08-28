@@ -233,12 +233,32 @@ class PgsqlPoolStore(AbstractPoolStore):
         ]
         return ret
 
-    async def add_block(self, coin_record: CoinRecord, singleton_coin_record: CoinRecord, farmer: FarmerRecord) -> None:
+    async def add_block(
+        self, coin_record: CoinRecord, singleton_coin_record: CoinRecord, farmer: FarmerRecord,
+        pool_space: int, estimate_to_win: int,
+    ) -> None:
+        last_block = await self._execute(
+            "SELECT etw, timestamp FROM block ORDER BY -confirmed_block_index LIMIT 1"
+        )
+        if last_block and last_block[0]:
+            last_etw = last_block[0][0]
+            last_timestamp = last_block[0][1]
+
+            # Effective ETW is the mean between last ETW and current ETW
+            if last_etw != -1:
+                effective_etw = (last_etw + estimate_to_win) / 2
+            else:
+                effective_etw = estimate_to_win
+
+            luck = int((int(coin_record.timestamp) - last_timestamp) / effective_etw) * 100)
+        else:
+            luck = 100
+
         await self._execute(
             "INSERT INTO block ("
-            " name, singleton, timestamp, confirmed_block_index, puzzle_hash, amount, farmed_by_id"
+            " name, singleton, timestamp, confirmed_block_index, puzzle_hash, amount, farmed_by_id, estimate_to_win, pool_space, luck"
             ") VALUES ("
-            " %s,   %s,        %s,        %s,                    %s,          %s,     %s"
+            " %s,   %s,        %s,        %s,                    %s,          %s,     %s,           %s             , %s,         %s"
             ")",
             (
                 coin_record.name.hex(),
@@ -248,6 +268,9 @@ class PgsqlPoolStore(AbstractPoolStore):
                 coin_record.coin.puzzle_hash.hex(),
                 int(coin_record.coin.amount),
                 farmer.launcher_id.hex(),
+                estimate_to_win,
+                pool_space,
+                luck,
             )
         )
 

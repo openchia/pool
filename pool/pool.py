@@ -407,8 +407,11 @@ class Pool:
                         push_tx_response: Dict = await self.node_rpc_client.push_tx(spend_bundle)
                         if push_tx_response["status"] == "SUCCESS":
                             try:
+                                pool_size, etw = await self.partials.get_pool_size_and_etw()
                                 for coin in coins_to_absorb:
-                                    await self.store.add_block(coin, singleton_coin_record, rec)
+                                    await self.store.add_block(
+                                        coin, singleton_coin_record, rec, pool_size, etw,
+                                    )
                             except Exception:
                                 self.log.error(
                                     'Failed to add block %r, farmer %r',

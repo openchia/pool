@@ -4,6 +4,7 @@ import itertools
 import logging
 import time
 
+from chia.cmds.farm_funcs import get_average_block_time
 from chia.types.blockchain_format.sized_bytes import bytes32
 from chia.util.ints import uint64
 from decimal import Decimal
@@ -186,6 +187,13 @@ class Partials(object):
             now = int(time.time())
             for i in to_update:
                 await self.cache.update_db(i, now)
+
+    async def get_pool_size_and_etw(self):
+        pool_size = self.calculate_estimated_size(self.cache.all.points)
+        blockchain_space = self.pool.blockchain_state['space']
+        proportion = pool_size / blockchain_space if blockchain_space else -1
+        etw = int(await get_average_block_time(None) / proportion) if proportion else -1
+        return pool_size, etw
 
     async def pool_estimated_size_loop(self):
         while True:
