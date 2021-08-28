@@ -238,7 +238,7 @@ class PgsqlPoolStore(AbstractPoolStore):
         pool_space: int, estimate_to_win: int,
     ) -> None:
         last_block = await self._execute(
-            "SELECT etw, timestamp FROM block ORDER BY -confirmed_block_index LIMIT 1"
+            "SELECT estimate_to_win, timestamp FROM block ORDER BY -confirmed_block_index LIMIT 1"
         )
         if last_block and last_block[0]:
             last_etw = last_block[0][0]
@@ -250,7 +250,7 @@ class PgsqlPoolStore(AbstractPoolStore):
             else:
                 effective_etw = estimate_to_win
 
-            luck = int((int(coin_record.timestamp) - last_timestamp) / effective_etw) * 100)
+            luck = int(((int(coin_record.timestamp) - last_timestamp) / effective_etw) * 100)
         else:
             luck = 100
 
