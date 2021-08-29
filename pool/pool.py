@@ -418,18 +418,20 @@ class Pool:
                         self.log.error(f"Error submitting transaction: {push_tx_response}")
 
                 try:
-                    absorbeb_coins.sort(key=lambda x: int(x[0].confirmed_block_index))
-                    pool_size, etw = await self.partials.get_pool_size_and_etw()
-                    for coin, singleton_coin, rec in absorbeb_coins:
-                        await self.store.add_block(
-                            coin, singleton_coin, rec, pool_size, etw,
-                        )
+                    if absorbeb_coins:
+                        absorbeb_coins.sort(key=lambda x: int(x[0].confirmed_block_index))
+                        pool_size, etw = await self.partials.get_pool_size_and_etw()
+                        for coin, singleton_coin, rec in absorbeb_coins:
+                            await self.store.add_block(
+                                coin, singleton_coin, rec, pool_size, etw,
+                            )
                 except Exception:
                     self.log.error(
                         'Failed to add absorbeb coins %r', absorbeb_coins, exc_info=True,
                     )
 
-                await self.run_hook('absorb', absorbeb_coins)
+                if absorbeb_coins:
+                    await self.run_hook('absorb', absorbeb_coins)
 
             except asyncio.CancelledError:
                 self.log.info("Cancelled collect_pool_rewards_loop, closing")
