@@ -267,14 +267,15 @@ class PgsqlPoolStore(AbstractPoolStore):
 
         await self._execute(
             "INSERT INTO block ("
-            " name, singleton, timestamp, confirmed_block_index, puzzle_hash, amount, farmed_by_id, estimate_to_win, pool_space, luck"
+            " name, singleton, timestamp, farmed_height, confirmed_block_index, puzzle_hash, amount, farmed_by_id, estimate_to_win, pool_space, luck"
             ") VALUES ("
-            " %s,   %s,        %s,        %s,                    %s,          %s,     %s,           %s             , %s,         %s"
+            " %s,   %s,        %s,        %s,            %s,                    %s,          %s,     %s,           %s             , %s,         %s"
             ")",
             (
                 coin_record.name.hex(),
                 singleton_coin_record.name.hex(),
                 int(coin_record.timestamp),
+                int.from_bytes(bytes(coin_record.coin.parent_coin_info)[16:], 'big'),
                 int(coin_record.confirmed_block_index),
                 coin_record.coin.puzzle_hash.hex(),
                 int(coin_record.coin.amount),
