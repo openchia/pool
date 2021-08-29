@@ -369,68 +369,75 @@ class Pool:
                     self.log.info(f"Not claimable amount: {not_claimable_amounts / (10**12)}")
                     self.log.info(f"Not buried amounts: {not_buried_amounts / (10**12)}")
 
+                absorbeb_coins: List[Tuple[CoinRecord, CoinRecord, FarmerRecord]] = []
+
                 for rec in farmer_records:
-                    if rec.is_pool_member:
-                        singleton_tip: Optional[Coin] = get_most_recent_singleton_coin_from_coin_spend(
-                            rec.singleton_tip
+                    if not rec.is_pool_member:
+                        continue
+
+                    singleton_tip: Optional[Coin] = get_most_recent_singleton_coin_from_coin_spend(
+                        rec.singleton_tip
+                    )
+                    if singleton_tip is None:
+                        continue
+
+                    singleton_coin_record: Optional[
+                        CoinRecord
+                    ] = await self.node_rpc_client.get_coin_record_by_name(singleton_tip.name())
+                    if singleton_coin_record is None:
+                        continue
+                    if singleton_coin_record.spent:
+                        self.log.warning(
+                            f"Singleton coin {singleton_coin_record.coin.name()} is spent, will not "
+                            f"claim rewards"
                         )
-                        if singleton_tip is None:
-                            continue
+                        continue
 
-                        singleton_coin_record: Optional[
-                            CoinRecord
-                        ] = await self.node_rpc_client.get_coin_record_by_name(singleton_tip.name())
-                        if singleton_coin_record is None:
-                            continue
-                        if singleton_coin_record.spent:
-                            self.log.warning(
-                                f"Singleton coin {singleton_coin_record.coin.name()} is spent, will not "
-                                f"claim rewards"
-                            )
-                            continue
+                    # Absorb at most 10 coins per transaction.
+                    # We cannot exceed max block cost.
+                    coins_to_absorb = ph_to_coins[rec.p2_singleton_puzzle_hash][:10]
 
-                        # Absorb at most 10 coins per transaction.
-                        # We cannot exceed max block cost.
-                        coins_to_absorb = ph_to_coins[rec.p2_singleton_puzzle_hash][:10]
+                    spend_bundle = await create_absorb_transaction(
+                        self.node_rpc_client,
+                        rec,
+                        self.blockchain_state["peak"].height,
+                        coins_to_absorb,
+                        self.constants.GENESIS_CHALLENGE,
+                    )
 
-                        spend_bundle = await create_absorb_transaction(
-                            self.node_rpc_client,
-                            rec,
-                            self.blockchain_state["peak"].height,
-                            coins_to_absorb,
-                            self.constants.GENESIS_CHALLENGE,
+                    if spend_bundle is None:
+                        continue
+
+                    push_tx_response: Dict = await self.node_rpc_client.push_tx(spend_bundle)
+                    if push_tx_response["status"] == "SUCCESS":
+                        absorbeb_coins += [
+                            (coin, singleton_coin_record, rec) for coin in coins_to_absorb
+                        ]
+                        self.log.info(f"Submitted transaction successfully: {spend_bundle.name().hex()}")
+                    else:
+                        self.log.error(f"Error submitting transaction: {push_tx_response}")
+
+                try:
+                    absorbeb_coins.sort(key=lambda x: int(x[0].confirmed_block_index))
+                    pool_size, etw = await self.partials.get_pool_size_and_etw()
+                    for coin, singleton_coin, rec in absorbeb_coins:
+                        await self.store.add_block(
+                            coin, singleton_coin, rec, pool_size, etw,
                         )
+                except Exception:
+                    self.log.error(
+                        'Failed to add absorbeb coins %r', absorbeb_coins, exc_info=True,
+                    )
 
-                        if spend_bundle is None:
-                            continue
+                await self.run_hook('absorb', absorbeb_coins)
 
-                        push_tx_response: Dict = await self.node_rpc_client.push_tx(spend_bundle)
-                        if push_tx_response["status"] == "SUCCESS":
-                            try:
-                                pool_size, etw = await self.partials.get_pool_size_and_etw()
-                                for coin in coins_to_absorb:
-                                    await self.store.add_block(
-                                        coin, singleton_coin_record, rec, pool_size, etw,
-                                    )
-                            except Exception:
-                                self.log.error(
-                                    'Failed to add block %r, farmer %r',
-                                    singleton_coin_record, rec, exc_info=True,
-                                )
-
-                            await self.run_hook('absorb', coins_to_absorb, rec)
-
-                            self.log.info(f"Submitted transaction successfully: {spend_bundle.name().hex()}")
-                        else:
-                            self.log.error(f"Error submitting transaction: {push_tx_response}")
-                await asyncio.sleep(self.collect_pool_rewards_interval)
             except asyncio.CancelledError:
                 self.log.info("Cancelled collect_pool_rewards_loop, closing")
                 return
-            except Exception as e:
-                error_stack = traceback.format_exc()
-                self.log.error(f"Unexpected error in collect_pool_rewards_loop: {e} {error_stack}")
-                await asyncio.sleep(self.collect_pool_rewards_interval)
+            except Exception:
+                self.log.error("Unexpected error in collect_pool_rewards_loop", exc_info=True)
+
+            await asyncio.sleep(self.collect_pool_rewards_interval)
 
     async def create_payment_loop(self):
         """
