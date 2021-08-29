@@ -260,7 +260,8 @@ class Pool:
         def dump(item):
             if isinstance(item, Streamable):
                 return item.to_json_dict()
-            elif isinstance(item, list):
+                return [dump(i) for i in item]
+            elif isinstance(item, (list, tuple)):
                 return [dump(i) for i in item]
             elif isinstance(item, dict):
                 return {dump(k): dump(v) for k, v in item.items()}
