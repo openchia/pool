@@ -466,7 +466,7 @@ class Pool:
                     start_height=self.scan_start_height,
                 )
 
-                last_singletons: List[str] = await self.store.last_block_singletons()
+                last_singletons: List[str] = await self.store.get_last_block_singletons()
 
                 total_amount_claimed = 0
                 for c in list(coin_records):
