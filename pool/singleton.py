@@ -191,7 +191,7 @@ async def create_absorb_transaction(
     return SpendBundle(all_spends, G2Element())
 
 
-def find_singleton_from_coin(
+async def find_singleton_from_coin(
     node_rpc_client: FullNodeRpcClient, store, blockchain_height: int, coin: CoinRecord,
     singleton_name: bytes32, scan_phs: List[bytes32]
 ):
