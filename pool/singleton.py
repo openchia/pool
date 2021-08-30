@@ -189,3 +189,46 @@ async def create_absorb_transaction(
     if len(all_spends) == 0:
         return None
     return SpendBundle(all_spends, G2Element())
+
+
+def find_singleton_from_coin(
+    node_rpc_client: FullNodeRpcClient, store, blockchain_height: int, coin: CoinRecord,
+    singleton_name: bytes32, scan_phs: List[bytes32]
+):
+
+    coin_records: List[CoinRecord] = await node_rpc_client.get_coin_records_by_puzzle_hashes(
+        scan_phs,
+        include_spent_coins=True,
+        start_height=blockchain_height - 1000,
+    )
+
+    for c in sorted(coin_records, key=lambda x: int(c.confirmed_block_index), reverse=True):
+        if not c.coinbase:
+            continue
+
+        farmer = await store.get_farmer_records_for_p2_singleton_phs([c.coin.puzzle_hash])
+        if not farmer:
+            continue
+        farmer = farmer[0]
+
+        singleton_tip: Optional[Coin] = get_most_recent_singleton_coin_from_coin_spend(
+            farmer.singleton_tip
+        )
+        if singleton_tip is None:
+            continue
+
+        singleton_coin_record: Optional[
+            CoinRecord
+        ] = await node_rpc_client.get_coin_record_by_name(singleton_tip.name())
+        if singleton_coin_record is None:
+            continue
+
+        if singleton_coin_record.name == singleton_name:
+            return (c, singleton_coin_record, farmer)
+
+        singleton_coin_record = await node_rpc_client.get_coin_record_by_name(
+            singleton_coin_record.coin.parent_coin_info
+        )
+
+        if singleton_coin_record and singleton_coin_record.name == singleton_name:
+            return (c, singleton_coin_record, farmer)

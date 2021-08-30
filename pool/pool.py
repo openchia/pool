@@ -49,7 +49,12 @@ from chia.pools.pool_puzzles import (
 
 from .difficulty_adjustment import get_new_difficulty
 from .partials import Partials
-from .singleton import create_absorb_transaction, get_singleton_state, get_coin_spend, get_farmed_height
+from .singleton import (
+    create_absorb_transaction,
+    get_singleton_state,
+    get_coin_spend,
+    find_singleton_from_coin,
+)
 from .store.abstract import AbstractPoolStore
 from .store.pgsql_store import PgsqlPoolStore
 from .record import FarmerRecord
@@ -103,7 +108,7 @@ class Pool:
         self.default_difficulty: uint64 = uint64(pool_config["default_difficulty"])
         self.difficulty_function: Callable = difficulty_function
 
-        self.pending_point_partials: Optional[asyncio.Queue] = None
+        self.pending_point_partials: asyncio.Queue = asyncio.Queue()
         self.recent_points_added: LRUCache = LRUCache(20000)
 
         # The time in minutes for an authentication token to be valid. See "Farmer authentication" in SPECIFICATION.md
@@ -158,9 +163,6 @@ class Pool:
         # faster.
         self.max_additions_per_transaction = pool_config["max_additions_per_transaction"]
 
-        # This is the list of payments that we have not sent yet, to farmers
-        self.pending_payments: Optional[asyncio.Queue] = None
-
         # Keeps track of the latest state of our node
         self.blockchain_state = {"peak": None}
 
@@ -189,14 +191,13 @@ class Pool:
     async def start(self):
         await self.store.connect()
         await self.partials.load_from_store()
-        self.pending_point_partials = asyncio.Queue()
 
         self_hostname = self.config["self_hostname"]
         self.node_rpc_client = await FullNodeRpcClient.create(
             self_hostname, uint16(self.node_rpc_port), DEFAULT_ROOT_PATH, self.config
         )
         self.wallet_rpc_client = await WalletRpcClient.create(
-            self.config["self_hostname"], uint16(self.wallet_rpc_port), DEFAULT_ROOT_PATH, self.config
+            self_hostname, uint16(self.wallet_rpc_port), DEFAULT_ROOT_PATH, self.config
         )
         self.blockchain_state = await self.node_rpc_client.get_blockchain_state()
         res = await self.wallet_rpc_client.log_in_and_skip(fingerprint=self.wallet_fingerprint)
@@ -220,8 +221,6 @@ class Pool:
             self.partials.missing_partials_loop()
         )
         self.xchprice_loop_task = asyncio.create_task(XCHPrice(self.store).loop())
-
-        self.pending_payments = asyncio.Queue()
 
     async def stop(self):
         if self.confirm_partials_loop_task is not None:
@@ -455,7 +454,7 @@ class Pool:
                     continue
 
                 if await self.store.pending_payment_targets_exists():
-                    self.log.warning(f"Pending payments, waiting")
+                    self.log.warning("Pending payments, waiting")
                     await asyncio.sleep(60)
                     continue
 
@@ -467,18 +466,49 @@ class Pool:
                     start_height=self.scan_start_height,
                 )
 
+                last_singletons: List[str] = await self.store.last_block_singletons()
+
+                total_amount_claimed = 0
+                for c in list(coin_records):
+                    if c.coin.parent_coin_info.hex() not in last_singletons:
+                        result = None
+                        try:
+                            result = await find_singleton_from_coin(
+                                self.node_rpc_client, self.store,
+                                self.blockchain_state['peak'].height, c, c.coin.parent_coin_info,
+                                list(self.scan_p2_singleton_puzzle_hashes),
+                            )
+                        except Exception:
+                            self.log.error('Failed to find singleton', exc_info=True)
+
+                        if result is not None:
+                            self.log.info('Coin %r was not absorbeb by us')
+                            absorb_coin, singleton_coin, farmer = result
+                            pool_size, etw = await self.partials.get_pool_size_and_etw()
+                            await self.store.add_block(
+                                absorb_coin, singleton_coin, farmer, pool_size, etw,
+                            )
+                            await self.run_hook('absorb', [absorb_coin])
+                        else:
+                            coin_records.remove(c)
+                            self.log.info(
+                                "Coin %s not in singleton, skipping", c.coin.amount / (10 ** 12)
+                            )
+                            continue
+
+                    total_amount_claimed += c.coin.amount
+
                 if len(coin_records) == 0:
                     self.log.info("No funds to distribute.")
-                    await asyncio.sleep(120)
+                    await asyncio.sleep(self.payment_interval)
                     continue
 
-                total_amount_claimed = sum([c.coin.amount for c in coin_records])
                 pool_coin_amount = int(total_amount_claimed * self.pool_fee)
                 amount_to_distribute = total_amount_claimed - pool_coin_amount
 
                 if total_amount_claimed < calculate_pool_reward(uint32(1)):  # 1.75 XCH
                     self.log.info(f"Do not have enough funds to distribute: {total_amount_claimed}, skipping payout")
-                    await asyncio.sleep(120)
+                    await asyncio.sleep(self.payment_interval)
                     continue
 
                 self.log.info(f"Total amount claimed: {total_amount_claimed / (10 ** 12)}")
@@ -512,14 +542,12 @@ class Pool:
                     else:
                         self.log.info(f"No points for any farmer. Waiting {self.payment_interval}")
 
-                await asyncio.sleep(self.payment_interval)
             except asyncio.CancelledError:
                 self.log.info("Cancelled create_payments_loop, closing")
                 return
             except Exception as e:
-                error_stack = traceback.format_exc()
-                self.log.error(f"Unexpected error in create_payments_loop: {e} {error_stack}")
-                await asyncio.sleep(self.payment_interval)
+                self.log.error(f"Unexpected error in create_payments_loop: {e}", exc_info=True)
+            await asyncio.sleep(self.payment_interval)
 
     async def submit_payment_loop(self):
         while True:
@@ -555,8 +583,9 @@ class Pool:
                 await self.store.add_transaction(transaction, payment_targets)
 
                 while (
-                    not transaction.confirmed
-                    or not (peak_height - transaction.confirmed_at_height) > self.confirmation_security_threshold
+                    not transaction.confirmed or not (
+                        peak_height - transaction.confirmed_at_height
+                    ) > self.confirmation_security_threshold
                 ):
                     transaction = await self.wallet_rpc_client.get_transaction(self.wallet_id, transaction.name)
                     peak_height = self.blockchain_state["peak"].height
@@ -688,7 +717,7 @@ class Pool:
 
             last_spend, last_state, is_member = singleton_state_tuple
             if is_member is None:
-                return error_dict(PoolErrorCode.INVALID_SINGLETON, f"Singleton is not assigned to this pool")
+                return error_dict(PoolErrorCode.INVALID_SINGLETON, "Singleton is not assigned to this pool")
 
             if (
                 request.payload.suggested_difficulty is None
@@ -701,11 +730,11 @@ class Pool:
             if len(hexstr_to_bytes(request.payload.payout_instructions)) != 32:
                 return error_dict(
                     PoolErrorCode.INVALID_PAYOUT_INSTRUCTIONS,
-                    f"Payout instructions must be an xch address for this pool.",
+                    "Payout instructions must be an xch address for this pool.",
                 )
 
             if not AugSchemeMPL.verify(last_state.owner_pubkey, request.payload.get_hash(), request.signature):
-                return error_dict(PoolErrorCode.INVALID_SIGNATURE, f"Invalid signature")
+                return error_dict(PoolErrorCode.INVALID_SIGNATURE, "Invalid signature")
 
             launcher_coin: Optional[CoinRecord] = await self.node_rpc_client.get_coin_record_by_name(
                 request.payload.launcher_id
@@ -716,7 +745,7 @@ class Pool:
             delay_time, delay_puzzle_hash = get_delayed_puz_info_from_launcher_spend(launcher_solution)
 
             if delay_time < 3600:
-                return error_dict(PoolErrorCode.DELAY_TIME_TOO_SHORT, f"Delay time too short, must be at least 1 hour")
+                return error_dict(PoolErrorCode.DELAY_TIME_TOO_SHORT, "Delay time too short, must be at least 1 hour")
 
             p2_singleton_puzzle_hash = launcher_id_to_p2_puzzle_hash(
                 request.payload.launcher_id, delay_time, delay_puzzle_hash
@@ -747,7 +776,7 @@ class Pool:
         # First check if this launcher_id is currently blocked for farmer updates, if so there is no reason to validate
         # all the stuff below
         if launcher_id in self.farmer_update_blocked:
-            return error_dict(PoolErrorCode.REQUEST_FAILED, f"Cannot update farmer yet.")
+            return error_dict(PoolErrorCode.REQUEST_FAILED, "Cannot update farmer yet.")
         farmer_record: Optional[FarmerRecord] = await self.store.get_farmer_record(launcher_id)
         if farmer_record is None:
             return error_dict(PoolErrorCode.FARMER_NOT_KNOWN, f"Farmer with launcher_id {launcher_id} not known.")
@@ -761,10 +790,10 @@ class Pool:
 
         last_spend, last_state, is_member = singleton_state_tuple
         if is_member is None:
-            return error_dict(PoolErrorCode.INVALID_SINGLETON, f"Singleton is not assigned to this pool")
+            return error_dict(PoolErrorCode.INVALID_SINGLETON, "Singleton is not assigned to this pool")
 
         if not AugSchemeMPL.verify(last_state.owner_pubkey, request.payload.get_hash(), request.signature):
-            return error_dict(PoolErrorCode.INVALID_SIGNATURE, f"Invalid signature")
+            return error_dict(PoolErrorCode.INVALID_SIGNATURE, "Invalid signature")
 
         farmer_dict = farmer_record.to_json_dict()
         response_dict = {}

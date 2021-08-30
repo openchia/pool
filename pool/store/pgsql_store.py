@@ -347,10 +347,12 @@ class PgsqlPoolStore(AbstractPoolStore):
             (int(transaction.confirmed_at_height), transaction.name.hex()),
         )
 
-    async def get_block_singletons(self):
+    async def get_last_block_singletons(self) -> List[str]:
         return [
             i[0] for i in
-            await self._execute("SELECT singleton FROM block")
+            await self._execute(
+                "SELECT singleton FROM block ORDER BY confirmed_block_index LIMIT 20"
+            )
         ]
 
     async def set_pool_size(self, size: int) -> None:
