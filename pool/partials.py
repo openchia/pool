@@ -227,7 +227,10 @@ class Partials(object):
 
                 if new:
                     farmer_records = {}
-                    six_hours_ago = time.time() - 3600 * 6
+                    time_now = time.time()
+                    two_hours_ago = time_now - 3600 * 2
+                    three_hours_ago = time_now - 3600 * 3
+                    six_hours_ago = time_now - 3600 * 6
                     for launcher_id, rec in (await self.store.get_farmer_records([
                         ('email', 'IS NOT NULL', None),
                         ('notify_missing_partials_hours', 'IS NOT NULL', None),
@@ -236,10 +239,15 @@ class Partials(object):
                         last_seen = new.get(launcher_id)
                         if not last_seen:
                             continue
-                        # Farmers with low space (less than 300GiB) can take up to six hours
-                        # to send partials
-                        if rec.estimated_size < 322122547200:  # 300GiB
+                        # Farmers with low space can take up more hours without partials
+                        if rec.estimated_size < 429496729600:  # 400GiB
                             if last_seen > six_hours_ago:
+                                continue
+                        if rec.estimated_size < 966367641600:  # 900GiB
+                            if last_seen > three_hours_ago:
+                                continue
+                        if rec.estimated_size < 1932735283200:  # 1800GiB
+                            if last_seen > two_hours_ago:
                                 continue
                         farmer_records[launcher_id] = rec
                     if farmer_records:
