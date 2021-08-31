@@ -482,7 +482,7 @@ class Pool:
                             self.log.error('Failed to find singleton', exc_info=True)
 
                         if result is not None:
-                            self.log.info('Coin %r was not absorbeb by us')
+                            self.log.info('Coin %r was not absorbeb by us', c.coin)
                             absorb_coin, singleton_coin, farmer = result
                             pool_size, etw = await self.partials.get_pool_size_and_etw()
                             await self.store.add_block(
