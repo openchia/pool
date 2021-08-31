@@ -118,7 +118,16 @@ class PartialsCache(dict):
                 filter(lambda x: x[0] >= last_time_target, self[launcher_id].partials),
             ))
 
+        time_target_8h = 60 * 60 * 8
+        last_8h = timestamp - time_target_8h
+        points_8h = sum(map(
+            lambda x: x[1],
+            filter(lambda x: x[0] >= last_8h, self[launcher_id].partials),
+        ))
+
         estimated_size = self.partials.calculate_estimated_size(points)
+        estimated_size_8h = self.partials.calculate_estimated_size(points_8h, time_target_8h)
+        estimated_size = int((estimated_size + estimated_size_8h) / 2)
 
         share_pplns = Decimal(points) / Decimal(self.all.points)
         logger.info(
@@ -164,8 +173,10 @@ class Partials(object):
             self.cache.all.add(t, d, remove=False)
         await self.store.scrub_pplns(start_time)
 
-    def calculate_estimated_size(self, points):
-        estimated_size = int(points / (self.pool_config['time_target'] * 1.0881482400062102e-15))
+    def calculate_estimated_size(self, points, time_target=None):
+        if time_target is None:
+            self.pool_config['time_target']
+        estimated_size = int(points / (time_target * 1.0881482400062102e-15))
         if self.config['full_node']['selected_network'] == 'testnet7':
             estimated_size = int(estimated_size / 14680000)
         return estimated_size
