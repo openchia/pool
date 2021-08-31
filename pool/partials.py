@@ -175,7 +175,7 @@ class Partials(object):
 
     def calculate_estimated_size(self, points, time_target=None):
         if time_target is None:
-            self.pool_config['time_target']
+            time_target = self.pool_config['time_target']
         estimated_size = int(points / (time_target * 1.0881482400062102e-15))
         if self.config['full_node']['selected_network'] == 'testnet7':
             estimated_size = int(estimated_size / 14680000)
