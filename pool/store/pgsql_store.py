@@ -261,7 +261,13 @@ class PgsqlPoolStore(AbstractPoolStore):
             else:
                 effective_etw = estimate_to_win
 
-            luck = int(((int(coin_record.timestamp) - last_timestamp) / effective_etw) * 100)
+            time_since_last = int(coin_record.timestamp) - last_timestamp
+            # If time is negative means we are adding a block that was won some time ago
+            # e.g. farmer that wasn't sending partials to the pool
+            if time_since_last < 0:
+                luck = 0
+            else:
+                luck = int((time_since_last / effective_etw) * 100)
         else:
             luck = 100
 
