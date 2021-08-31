@@ -202,7 +202,7 @@ async def find_singleton_from_coin(
         start_height=blockchain_height - 1000,
     )
 
-    for c in sorted(coin_records, key=lambda x: int(c.confirmed_block_index), reverse=True):
+    for c in sorted(coin_records, key=lambda x: int(x.confirmed_block_index), reverse=True):
         if not c.coinbase:
             continue
 
