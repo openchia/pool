@@ -488,7 +488,7 @@ class Pool:
                             await self.store.add_block(
                                 absorb_coin, singleton_coin, farmer, pool_size, etw,
                             )
-                            await self.run_hook('absorb', [absorb_coin])
+                            await self.run_hook('absorb', [absorb_coin, singleton_coin, farmer])
                         else:
                             coin_records.remove(c)
                             self.log.info(
