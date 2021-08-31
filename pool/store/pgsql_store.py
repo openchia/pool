@@ -357,7 +357,7 @@ class PgsqlPoolStore(AbstractPoolStore):
         return [
             i[0] for i in
             await self._execute(
-                "SELECT singleton FROM block ORDER BY confirmed_block_index LIMIT 20"
+                "SELECT singleton FROM block ORDER BY confirmed_block_index DESC LIMIT 20"
             )
         ]
 
