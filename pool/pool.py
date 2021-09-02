@@ -429,7 +429,9 @@ class Pool:
 
                     try:
                         if absorbeb_coins:
-                            absorbeb_coins.sort(key=lambda x: int(x[0].confirmed_block_index))
+                            absorbeb_coins.sort(key=lambda x: int.from_bytes(
+                                bytes(x.coin.parent_coin_info)[16:], 'big'
+                            ))
                             pool_size, etw = await self.partials.get_pool_size_and_etw()
                             for coin, singleton_coin, rec in absorbeb_coins:
                                 await self.store.add_block(
