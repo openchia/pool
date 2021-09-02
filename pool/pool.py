@@ -396,9 +396,16 @@ class Pool:
                             )
                             continue
 
-                        # Absorb at most 10 coins per transaction.
-                        # We cannot exceed max block cost.
-                        coins_to_absorb = ph_to_coins[rec.p2_singleton_puzzle_hash][:10]
+                        # Absorb only one coin at a time per farmer.
+                        # That is because the singleton will change for each absorbeb coin.
+                        # Also We cannot exceed max block cost
+                        # (number of absorbeb coins per transaction).
+                        coins_to_absorb = sorted(
+                            ph_to_coins[rec.p2_singleton_puzzle_hash],
+                            key=lambda x: int.from_bytes(
+                                bytes(x.coin.parent_coin_info)[16:], 'big'
+                            ),
+                        )[:1]
 
                         spend_bundle = await create_absorb_transaction(
                             self.node_rpc_client,
