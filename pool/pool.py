@@ -189,6 +189,8 @@ class Pool:
         self.node_rpc_port = pool_config["node_rpc_port"]
         self.wallet_rpc_client: Optional[WalletRpcClient] = None
         self.wallet_rpc_port = pool_config["wallet_rpc_port"]
+        self.wallet_hostname = pool_config.get("wallet_hostname") or self.config["self_hostname"]
+        self.wallet_ssl_dir = pool_config.get("wallet_ssl_dir")
 
     async def start(self):
         await self.store.connect()
@@ -198,9 +200,28 @@ class Pool:
         self.node_rpc_client = await FullNodeRpcClient.create(
             self_hostname, uint16(self.node_rpc_port), DEFAULT_ROOT_PATH, self.config
         )
-        self.wallet_rpc_client = await WalletRpcClient.create(
-            self_hostname, uint16(self.wallet_rpc_port), DEFAULT_ROOT_PATH, self.config
-        )
+
+        if self.wallet_ssl_dir:
+            self.wallet_rpc_client = await WalletRpcClient.create(
+                self.wallet_hostname,
+                uint16(self.wallet_rpc_port),
+                pathlib.Path(self.wallet_ssl_dir),
+                {
+                    'private_ssl_ca': {
+                        'crt': 'private_ca.crt',
+                        'key': 'private_ca.key',
+                    },
+                    'daemon_ssl': {
+                        'private_crt': 'private_daemon.crt',
+                        'private_key': 'private_daemon.key',
+                    },
+                },
+            )
+        else:
+            self.wallet_rpc_client = await WalletRpcClient.create(
+                self.wallet_hostname, uint16(self.wallet_rpc_port), DEFAULT_ROOT_PATH, self.config
+            )
+
         self.blockchain_state = await self.node_rpc_client.get_blockchain_state()
         res = await self.wallet_rpc_client.log_in_and_skip(fingerprint=self.wallet_fingerprint)
         if not res["success"]:
