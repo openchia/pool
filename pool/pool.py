@@ -186,6 +186,7 @@ class Pool:
         self.xchprice_loop_task: Optional[asyncio.Task] = None
 
         self.node_rpc_client: Optional[FullNodeRpcClient] = None
+        self.node_hostname = pool_config.get("node_hostname") or self.config["self_hostname"]
         self.node_rpc_port = pool_config["node_rpc_port"]
         self.wallet_rpc_client: Optional[WalletRpcClient] = None
         self.wallet_rpc_port = pool_config["wallet_rpc_port"]
@@ -196,9 +197,8 @@ class Pool:
         await self.store.connect()
         await self.partials.load_from_store()
 
-        self_hostname = self.config["self_hostname"]
         self.node_rpc_client = await FullNodeRpcClient.create(
-            self_hostname, uint16(self.node_rpc_port), DEFAULT_ROOT_PATH, self.config
+            self.node_hostname, uint16(self.node_rpc_port), DEFAULT_ROOT_PATH, self.config
         )
 
         if self.wallet_ssl_dir:
