@@ -11,7 +11,6 @@ from math import floor
 from typing import Dict, Optional, Set, List, Tuple, Callable
 
 from blspy import AugSchemeMPL, G1Element
-from chia.cmds.farm_funcs import get_average_block_time
 from chia.consensus.block_rewards import calculate_pool_reward
 from chia.pools.pool_wallet_info import PoolState, PoolSingletonState
 from chia.protocols.pool_protocol import (
@@ -62,6 +61,7 @@ from .record import FarmerRecord
 from .util import error_dict, RequestMetadata
 from .xchprice import XCHPrice
 
+SECONDS_PER_BLOCK = (24 * 3600) / 4608
 logger = logging.getLogger('pool')
 
 
@@ -324,8 +324,7 @@ class Pool:
                 asyncio.create_task(self.store.set_globalinfo({
                     'blockchain_height': self.blockchain_state['peak'].height,
                     'blockchain_space': self.blockchain_state['space'],
-                    # TODO: performance improvement
-                    'blockchain_avg_block_time': await get_average_block_time(None),
+                    'blockchain_avg_block_time': await self.get_average_block_time(),
                 }))
             except asyncio.CancelledError:
                 self.log.info("Cancelled get_peak_loop, closing")
@@ -333,6 +332,26 @@ class Pool:
             except Exception as e:
                 self.log.error(f"Unexpected error in get_peak_loop: {e}", exc_info=True)
             await asyncio.sleep(30)
+
+    async def get_average_block_time(self):
+        blocks_to_compare = 500
+        curr = self.blockchain_state["peak"]
+        if curr is None or curr.height < (blocks_to_compare + 100):
+            return SECONDS_PER_BLOCK
+        while curr is not None and curr.height > 0 and not curr.is_transaction_block:
+            curr = await self.node_rpc_client.get_block_record(curr.prev_hash)
+        if curr is None:
+            return SECONDS_PER_BLOCK
+
+        past_curr = await self.node_rpc_client.get_block_record_by_height(
+            curr.height - blocks_to_compare
+        )
+        while past_curr is not None and past_curr.height > 0 and not past_curr.is_transaction_block:
+            past_curr = await self.node_rpc_client.get_block_record(past_curr.prev_hash)
+        if past_curr is None:
+            return SECONDS_PER_BLOCK
+
+        return (curr.timestamp - past_curr.timestamp) / (curr.height - past_curr.height)
 
     async def collect_pool_rewards_loop(self):
         """
