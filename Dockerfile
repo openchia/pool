@@ -6,7 +6,7 @@ LABEL maintainer="contact@openchia.io"
 # Update the image to the latest packages
 RUN apt-get update && apt-get upgrade -y
 
-RUN apt-get install python3-virtualenv python3-yaml python3-aiohttp libpq-dev git vim procps net-tools iputils-ping -y
+RUN apt-get install python3-virtualenv python3-yaml python3-aiohttp libpq-dev git vim procps net-tools iputils-ping apache2-utils -y
 
 EXPOSE 8088
 
