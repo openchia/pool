@@ -325,7 +325,7 @@ class Pool:
                     'blockchain_height': self.blockchain_state['peak'].height,
                     'blockchain_space': self.blockchain_state['space'],
                     # TODO: performance improvement
-                    'blockchain_avg_block_time': await get_average_block_time(),
+                    'blockchain_avg_block_time': await get_average_block_time(None),
                 }))
             except asyncio.CancelledError:
                 self.log.info("Cancelled get_peak_loop, closing")
