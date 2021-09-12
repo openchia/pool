@@ -11,6 +11,7 @@ from math import floor
 from typing import Dict, Optional, Set, List, Tuple, Callable
 
 from blspy import AugSchemeMPL, G1Element
+from chia.cmds.farm_funcs import get_average_block_time
 from chia.consensus.block_rewards import calculate_pool_reward
 from chia.pools.pool_wallet_info import PoolState, PoolSingletonState
 from chia.protocols.pool_protocol import (
@@ -323,6 +324,8 @@ class Pool:
                 asyncio.create_task(self.store.set_globalinfo({
                     'blockchain_height': self.blockchain_state['peak'].height,
                     'blockchain_space': self.blockchain_state['space'],
+                    # TODO: performance improvement
+                    'blockchain_avg_block_time': await get_average_block_time(),
                 }))
             except asyncio.CancelledError:
                 self.log.info("Cancelled get_peak_loop, closing")
