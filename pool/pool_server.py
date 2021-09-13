@@ -307,12 +307,16 @@ def main():
 
     logging.root.setLevel(getattr(logging, args.log_level))
 
+    handlers = ["console"]
+    if args.log_file:
+        handlers.append("file")
+
     logging.config.dictConfig({
         "version": 1,
         "disable_existing_loggers": False,
         "loggers": {
             "": {
-                "handlers": ["file" if args.log_file else "console"],
+                "handlers": handlers,
             },
         },
         "handlers": {
@@ -320,7 +324,7 @@ def main():
                 "level": args.log_level,
                 "class": "logging.StreamHandler",
                 "stream": "ext://sys.stdout",
-                "formatter": "console",
+                "formatter": "colored",
             },
             "file": {
                 "level": args.log_level,
@@ -328,10 +332,11 @@ def main():
                 "filename": args.log_file or "/dev/null",
                 "maxBytes": 5 * 1024 * 1024,
                 "backupCount": 5,
+                "formatter": "colored",
             },
         },
         "formatters": {
-            "console": {
+            "colored": {
                 "()": "colorlog.ColoredFormatter",
                 "format": "[%(asctime)s] (%(log_color)s%(levelname)-8s%(reset)s) %(name)s.%(funcName)s():%(lineno)d - %(message)s",
             },
