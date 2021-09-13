@@ -301,6 +301,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', default=f'{os.getcwd()}/config.yaml')
     parser.add_argument('--log-level', default='INFO')
+    parser.add_argument('--log-file')
 
     args = parser.parse_args()
 
@@ -311,7 +312,7 @@ def main():
         "disable_existing_loggers": False,
         "loggers": {
             "": {
-                "handlers": ["console"],
+                "handlers": ["file" if args.log_file else "console"],
             },
         },
         "handlers": {
@@ -320,6 +321,13 @@ def main():
                 "class": "logging.StreamHandler",
                 "stream": "ext://sys.stdout",
                 "formatter": "console",
+            },
+            "file": {
+                "level": args.log_level,
+                "class": "logging.handlers.RotatingFileHandler",
+                "filename": args.log_file or "/dev/null",
+                "maxBytes": 5 * 1024 * 1024,
+                "backupCount": 5,
             },
         },
         "formatters": {
