@@ -3,6 +3,7 @@ import asyncio
 import logging
 import logging.config
 import os
+import signal
 import ssl
 import time
 import traceback
@@ -278,6 +279,8 @@ async def start_pool_server(pool_config_path=None, pool_store: Optional[Abstract
         ssl_context=ssl_context,
     )
     await site.start()
+
+    asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, stop)
 
     while True:
         await asyncio.sleep(3600)
