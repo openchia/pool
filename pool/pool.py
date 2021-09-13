@@ -269,7 +269,9 @@ class Pool:
         await self.wallet_rpc_client.await_closed()
         self.node_rpc_client.close()
         await self.node_rpc_client.await_closed()
-        await self.store.close()
+
+        async with self.store.lock:
+            await self.store.close()
 
     async def run_hook(self, name, *args):
         hook = self.pool_config.get('hooks', {}).get(name)
@@ -706,16 +708,17 @@ class Pool:
                 asyncio.create_task(process_partial())
             except asyncio.CancelledError:
                 self.log.info("Cancelled confirm partials loop, closing")
-                # Add remaining items in the Queue, if any.
-                while True:
-                    try:
-                        args = self.pending_point_partials.get_nowait()
-                        await self.store.add_pending_partial(*args)
-                    except asyncio.QueueEmpty:
-                        break
+                async with self.store.lock:
+                    # Add remaining items in the Queue, if any.
+                    while True:
+                        try:
+                            args = self.pending_point_partials.get_nowait()
+                            await self.store.add_pending_partial(*args)
+                        except asyncio.QueueEmpty:
+                            break
 
-                for args in processing.values():
-                    await self.store.add_pending_partial(*args)
+                    for args in processing.values():
+                        await self.store.add_pending_partial(*args)
 
             except Exception as e:
                 self.log.error(f"Unexpected error: {e}", exc_info=True)
