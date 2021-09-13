@@ -1,10 +1,11 @@
 from decimal import Decimal
+import json
 from typing import Optional, Set, List, Tuple, Dict
 
 import aiopg
 from blspy import G1Element
 from chia.pools.pool_wallet_info import PoolState
-from chia.protocols.pool_protocol import PostPartialPayload
+from chia.protocols.pool_protocol import PostPartialPayload, PostPartialRequest
 from chia.types.blockchain_format.sized_bytes import bytes32
 from chia.types.coin_record import CoinRecord
 from chia.types.coin_spend import CoinSpend
@@ -202,6 +203,31 @@ class PgsqlPoolStore(AbstractPoolStore):
 
     async def clear_farmer_points(self) -> None:
         await self._execute("UPDATE farmer set points=0")
+
+    async def add_pending_partial(self, partial: PostPartialRequest, time_received: uint64, points_received: uint64) -> None:
+        await self._execute(
+            "INSERT INTO pending_partial ("
+            "partial, time_received, points_received"
+            ") VALUES ("
+            "%s     , %s           , %s"
+            ")",
+            (json.dumps(partial.to_json_dict()), int(time_received), int(points_received)),
+        )
+
+    async def get_pending_partials(self) -> List[Tuple[PostPartialRequest, uint64, uint64]]:
+        partials = [
+            (
+                PostPartialRequest.from_json_dict(json.loads(i[0])),
+                uint64(i[1]),
+                uint64(i[2]),
+            )
+            for i in await self._execute(
+                "SELECT partial, time_received, points_received FROM pending_partial "
+                "ORDER BY id ASC"
+            )
+        ]
+        await self._execute("DELETE FROM pending_partial")
+        return partials
 
     async def add_partial(self, partial_payload: PostPartialPayload, timestamp: uint64, difficulty: uint64, error: Optional[str] = None):
         async with self.pool.acquire() as conn:

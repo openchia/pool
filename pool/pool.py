@@ -1,5 +1,6 @@
 import asyncio
 import json
+import itertools
 import logging
 import os
 import pathlib
@@ -672,22 +673,47 @@ class Pool:
         Pulls things from the queue of partials one at a time, and adjusts balances.
         """
 
+        processing = {}
+        count = itertools.count()
+        for pending_partials in await self.store.get_pending_partials():
+            await self.pending_point_partials.put(pending_partials)
+
         while True:
             try:
                 # The points are based on the difficulty at the time of partial submission, not at the time of
                 # confirmation
                 partial, time_received, points_received = await self.pending_point_partials.get()
 
+                pid = next(count)
+                processing[pid] = (partial, time_received, points_received)
+
                 # Wait a few minutes to check if partial is still valid in the blockchain (no reorgs)
                 await asyncio.sleep((max(0, time_received + self.partial_confirmation_delay - time.time() - 5)))
 
+                async def process_partial():
+                    try:
+                        await self.check_and_confirm_partial(partial, time_received, points_received)
+                    except Exception:
+                        self.log.error('Failed to check and confirm partial', exc_info=True)
+                    del processing[pid]
+
                 # Starts a task to check the remaining things for this partial and optionally update points
-                asyncio.create_task(self.check_and_confirm_partial(partial, time_received, points_received))
+                asyncio.create_task(process_partial())
             except asyncio.CancelledError:
                 self.log.info("Cancelled confirm partials loop, closing")
-                return
+                # Add remaining items in the Queue, if any.
+                while True:
+                    try:
+                        args = self.pending_point_partials.get_nowait()
+                        await self.store.add_pending_partial(*args)
+                    except asyncio.QueueEmpty:
+                        break
+
+                for args in processing.values():
+                    await self.store.add_pending_partial(*args)
+
             except Exception as e:
-                self.log.error(f"Unexpected error: {e}")
+                self.log.error(f"Unexpected error: {e}", exc_info=True)
 
     async def check_and_confirm_partial(self, partial: PostPartialRequest, time_received: uint64, points_received: uint64) -> None:
         try:
