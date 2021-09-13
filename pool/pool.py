@@ -697,7 +697,7 @@ class Pool:
                 # Wait a few minutes to check if partial is still valid in the blockchain (no reorgs)
                 await asyncio.sleep((max(0, time_received + self.partial_confirmation_delay - time.time() - 5)))
 
-                async def process_partial():
+                async def process_partial(pid, partial, time_received, points_received):
                     try:
                         await self.check_and_confirm_partial(partial, time_received, points_received)
                     except Exception:
@@ -705,7 +705,9 @@ class Pool:
                     del processing[pid]
 
                 # Starts a task to check the remaining things for this partial and optionally update points
-                asyncio.create_task(process_partial())
+                asyncio.create_task(process_partial(
+                    int(pid), partial, time_received, points_received
+                ))
             except asyncio.CancelledError:
                 self.log.info("Cancelled confirm partials loop, closing")
                 async with self.store.lock:
