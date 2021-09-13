@@ -327,12 +327,13 @@ class Pool:
                     'blockchain_space': self.blockchain_state['space'],
                     'blockchain_avg_block_time': await self.get_average_block_time(),
                 }))
+                await asyncio.sleep(30)
             except asyncio.CancelledError:
                 self.log.info("Cancelled get_peak_loop, closing")
                 return
             except Exception as e:
                 self.log.error(f"Unexpected error in get_peak_loop: {e}", exc_info=True)
-            await asyncio.sleep(30)
+                await asyncio.sleep(5)
 
     async def get_average_block_time(self):
         blocks_to_compare = 500
@@ -489,13 +490,13 @@ class Pool:
                     if absorbeb_coins:
                         await self.run_hook('absorb', absorbeb_coins)
 
+                await asyncio.sleep(self.collect_pool_rewards_interval)
             except asyncio.CancelledError:
                 self.log.info("Cancelled collect_pool_rewards_loop, closing")
                 return
             except Exception:
                 self.log.error("Unexpected error in collect_pool_rewards_loop", exc_info=True)
-
-            await asyncio.sleep(self.collect_pool_rewards_interval)
+                await asyncio.sleep(5)
 
     async def create_payment_loop(self):
         """
@@ -601,12 +602,13 @@ class Pool:
                     else:
                         self.log.info(f"No points for any farmer. Waiting {self.payment_interval}")
 
+                await asyncio.sleep(self.payment_interval)
             except asyncio.CancelledError:
                 self.log.info("Cancelled create_payments_loop, closing")
                 return
             except Exception as e:
                 self.log.error(f"Unexpected error in create_payments_loop: {e}", exc_info=True)
-            await asyncio.sleep(self.payment_interval)
+                await asyncio.sleep(5)
 
     async def submit_payment_loop(self):
         while True:
@@ -675,8 +677,11 @@ class Pool:
 
         processing = {}
         count = itertools.count()
-        for pending_partials in await self.store.get_pending_partials():
-            await self.pending_point_partials.put(pending_partials)
+        pending_partials = await self.store.get_pending_partials()
+        if pending_partials:
+            self.log.info('Adding %d pending partials to queue', len(pending_partials))
+        for pending_partial in pending_partials:
+            await self.pending_point_partials.put(pending_partial)
 
         while True:
             try:

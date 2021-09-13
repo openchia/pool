@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import functools
 import logging
 import logging.config
 import os
@@ -280,10 +281,15 @@ async def start_pool_server(pool_config_path=None, pool_store: Optional[Abstract
     )
     await site.start()
 
-    asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, stop)
+    loop = asyncio.get_running_loop()
+    loop.add_signal_handler(signal.SIGTERM, functools.partial(stop_sync, loop))
 
     while True:
         await asyncio.sleep(3600)
+
+
+def stop_sync(loop):
+    asyncio.run_coroutine_threadsafe(stop(), loop)
 
 
 async def stop():
