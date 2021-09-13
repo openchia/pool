@@ -217,7 +217,7 @@ class PgsqlPoolStore(AbstractPoolStore):
     async def get_pending_partials(self) -> List[Tuple[PostPartialRequest, uint64, uint64]]:
         partials = [
             (
-                PostPartialRequest.from_json_dict(json.loads(i[0])),
+                PostPartialRequest.from_json_dict(i[0]),
                 uint64(i[1]),
                 uint64(i[2]),
             )
