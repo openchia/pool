@@ -747,6 +747,7 @@ class Pool:
 
                     for args in processing.values():
                         await self.store.add_pending_partial(*args)
+                return
 
             except Exception as e:
                 self.log.error(f"Unexpected error: {e}", exc_info=True)
