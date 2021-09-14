@@ -247,11 +247,13 @@ class PoolServer:
 
 server: Optional[PoolServer] = None
 runner: Optional[aiohttp.web.BaseRunner] = None
+run_forever_task = None
 
 
 async def start_pool_server(pool_config_path=None, pool_store: Optional[AbstractPoolStore] = None):
     global server
     global runner
+    global run_forever_task
     config = load_config(DEFAULT_ROOT_PATH, "config.yaml")
     overrides = config["network_overrides"]["constants"][config["selected_network"]]
     constants: ConsensusConstants = DEFAULT_CONSTANTS.replace_str_to_bytes(**overrides)
@@ -284,8 +286,15 @@ async def start_pool_server(pool_config_path=None, pool_store: Optional[Abstract
     loop = asyncio.get_running_loop()
     loop.add_signal_handler(signal.SIGTERM, functools.partial(stop_sync, loop))
 
-    while True:
-        await asyncio.sleep(3600)
+    async def run_forever():
+        while True:
+            await asyncio.sleep(3600)
+
+    run_forever_task = asyncio.create_task(run_forever())
+    try:
+        await run_forever_task
+    except asyncio.exceptions.CancelledError:
+        pass
 
 
 def stop_sync(loop):
@@ -295,6 +304,8 @@ def stop_sync(loop):
 async def stop():
     await server.stop()
     await runner.cleanup()
+    if run_forever_task:
+        run_forever_task.cancel()
 
 
 def main():
