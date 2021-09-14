@@ -1,3 +1,4 @@
+import aiohttp
 import asyncio
 import json
 import itertools
@@ -224,13 +225,24 @@ class Pool:
                 self.wallet_hostname, uint16(self.wallet_rpc_port), DEFAULT_ROOT_PATH, self.config
             )
 
-        self.blockchain_state = await self.node_rpc_client.get_blockchain_state()
-        res = await self.wallet_rpc_client.log_in_and_skip(fingerprint=self.wallet_fingerprint)
-        if not res["success"]:
-            raise ValueError(f"Error logging in: {res['error']}. Make sure your config fingerprint is correct.")
-        self.log.info(f"Logging in: {res}")
-        res = await self.wallet_rpc_client.get_wallet_balance(self.wallet_id)
-        self.log.info(f"Obtaining balance: {res}")
+        while True:
+            try:
+                self.blockchain_state = await self.node_rpc_client.get_blockchain_state()
+            except aiohttp.client_exceptions.ClientConnectorError:
+                self.log.error('Failing to connect to node, retrying in 2 seconds')
+                await asyncio.sleep(2)
+            else:
+                break
+
+        try:
+            res = await self.wallet_rpc_client.log_in_and_skip(fingerprint=self.wallet_fingerprint)
+            if not res["success"]:
+                raise ValueError(f"Error logging in: {res['error']}. Make sure your config fingerprint is correct.")
+            self.log.info(f"Logging in: {res}")
+            res = await self.wallet_rpc_client.get_wallet_balance(self.wallet_id)
+            self.log.info(f"Obtaining balance: {res}")
+        except aiohttp.client_exceptions.ClientConnectorError as e:
+            self.log.error('Failed to connect to the wallet: %s', e)
 
         self.scan_p2_singleton_puzzle_hashes = await self.store.get_pay_to_singleton_phs()
 
@@ -323,12 +335,18 @@ class Pool:
         while True:
             try:
                 self.blockchain_state = await self.node_rpc_client.get_blockchain_state()
-                self.wallet_synced = await self.wallet_rpc_client.get_synced()
                 asyncio.create_task(self.store.set_globalinfo({
                     'blockchain_height': self.blockchain_state['peak'].height,
                     'blockchain_space': self.blockchain_state['space'],
                     'blockchain_avg_block_time': await self.get_average_block_time(),
                 }))
+
+                try:
+                    # Get the wallet as last since its not absolutely critical for pool operation
+                    self.wallet_synced = await self.wallet_rpc_client.get_synced()
+                except aiohttp.client_exceptions.ClientConnectorError as e:
+                    self.wallet_synced = False
+                    self.log.error('Failed to connect to wallet: %s', e)
                 await asyncio.sleep(30)
             except asyncio.CancelledError:
                 self.log.info("Cancelled get_peak_loop, closing")
@@ -616,7 +634,13 @@ class Pool:
         while True:
             try:
                 peak_height = self.blockchain_state["peak"].height
-                await self.wallet_rpc_client.log_in_and_skip(fingerprint=self.wallet_fingerprint)
+                try:
+                    await self.wallet_rpc_client.log_in_and_skip(fingerprint=self.wallet_fingerprint)
+                except aiohttp.client_exceptions.ClientConnectorError as e:
+                    self.log.warning('Failed to connect to wallet, retrying in 30 seconds')
+                    await asyncio.sleep(30)
+                    continue
+
                 if not self.blockchain_state["sync"]["synced"] or not self.wallet_synced:
                     self.log.warning("Waiting for wallet sync")
                     await asyncio.sleep(60)
