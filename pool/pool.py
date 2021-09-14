@@ -277,13 +277,15 @@ class Pool:
         if self.xchprice_loop_task is not None:
             self.xchprice_loop_task.cancel()
 
+        # Await task that can use database connection
+        await self.confirm_partials_loop_task
+
         self.wallet_rpc_client.close()
         await self.wallet_rpc_client.await_closed()
         self.node_rpc_client.close()
         await self.node_rpc_client.await_closed()
 
-        async with self.store.lock:
-            await self.store.close()
+        await self.store.close()
 
     async def run_hook(self, name, *args):
         hook = self.pool_config.get('hooks', {}).get(name)
