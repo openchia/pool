@@ -250,16 +250,17 @@ class Partials(object):
                         last_seen = new.get(launcher_id)
                         if not last_seen:
                             continue
-                        # Farmers with low space can take up more hours without partials
-                        if rec.estimated_size < 429496729600:  # 400GiB
-                            if last_seen > six_hours_ago:
-                                continue
-                        if rec.estimated_size < 966367641600:  # 900GiB
-                            if last_seen > three_hours_ago:
-                                continue
-                        if rec.estimated_size < 1932735283200:  # 1800GiB
-                            if last_seen > two_hours_ago:
-                                continue
+                        if self.config['full_node']['selected_network'] == 'mainnet':
+                            # Farmers with low space can take up more hours without partials
+                            if rec.estimated_size < 429496729600:  # 400GiB
+                                if last_seen > six_hours_ago:
+                                    continue
+                            if rec.estimated_size < 966367641600:  # 900GiB
+                                if last_seen > three_hours_ago:
+                                    continue
+                            if rec.estimated_size < 1932735283200:  # 1800GiB
+                                if last_seen > two_hours_ago:
+                                    continue
                         farmer_records[launcher_id] = rec
                     if farmer_records:
                         logger.debug('%d launchers stopped sending partials.', len(farmer_records))
