@@ -318,7 +318,7 @@ class PgsqlPoolStore(AbstractPoolStore):
             )
         )
 
-    async def add_payout(self, coin_records, amount, fee, payment_targets) -> int:
+    async def add_payout(self, coin_records, pool_puzzle_hash, amount, fee, payment_targets) -> int:
         rv = await self._execute(
             "INSERT INTO payout "
             "(datetime, amount, fee) VALUES "
@@ -343,9 +343,9 @@ class PgsqlPoolStore(AbstractPoolStore):
                 farmer = 'NULL'
             await self._execute(
                 "INSERT INTO payout_address "
-                "(payout_id, puzzle_hash, launcher_id, amount, transaction) VALUES "
-                "(%%s,       %%s,         %s,          %%s,    NULL)" % (farmer,),
-                (payout_id, i["puzzle_hash"].hex(), i["amount"]),
+                "(payout_id, puzzle_hash, pool_puzzle_hash, launcher_id, amount, transaction) VALUES "
+                "(%%s,       %%s,         %%s               , %s,          %%s,    NULL)" % (farmer,),
+                (payout_id, i["puzzle_hash"].hex(), pool_puzzle_hash.hex(), i["amount"]),
             )
         return payout_id
 
@@ -358,19 +358,21 @@ class PgsqlPoolStore(AbstractPoolStore):
             (transaction.name.hex(),),
         )
 
-    async def pending_payment_targets_exists(self):
+    async def pending_payment_targets_exists(self, pool_puzzle_hash: bytes32):
         return (await self._execute(
-            "SELECT COUNT(*) FROM payout_address WHERE transaction IS NULL",
+            "SELECT COUNT(*) FROM payout_address WHERE pool_puzzle_hash = %s AND transaction IS NULL",
+            (pool_puzzle_hash.hex(), ),
         ))[0][0] > 0
 
-    async def get_pending_payment_targets(self, limit):
+    async def get_pending_payment_targets(self, pool_puzzle_hash: bytes32, limit):
         return [{
             "id": i[0],
             "payout_id": i[1],
             "puzzle_hash": bytes32(bytes.fromhex(i[2])),
             "amount": i[3],
         } for i in await self._execute(
-            "SELECT id, payout_id, puzzle_hash, amount FROM payout_address WHERE transaction IS NULL LIMIT %s" % limit,
+            "SELECT id, payout_id, puzzle_hash, amount FROM payout_address WHERE pool_puzzle_hash = %s AND transaction IS NULL LIMIT %s",
+            (taget_puzzle_hash.hex(), limit),
         )]
 
     async def confirm_transaction(self, transaction):

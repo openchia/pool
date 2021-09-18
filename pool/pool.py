@@ -123,16 +123,18 @@ class Pool:
         # that you do not want to distribute. Even if the funds are in a different address than this one, they WILL
         # be spent by this code! So only put funds that you want to distribute to pool members here.
 
-        # Using 2164248527
-        self.default_target_puzzle_hash: bytes32 = bytes32(decode_puzzle_hash(pool_config["default_target_address"]))
+        self.default_target_puzzle_hashes: List[bytes32] = []
+        self.wallets = []
+        for wallet in pool_config["wallets"]:
+            wallet['address'] = bytes32(decode_puzzle_hash(wallet['address']))
+            self.default_target_puzzle_hashes.append(wallet['address'])
+            wallet['hostname'] = wallet.get("hostname") or self.config["self_hostname"]
+            wallet['ssl_dir'] = wallet.get("ssl_dir")
+            self.wallets.append(wallet)
 
         # The pool fees will be sent to this address. This MUST be on a different key than the target_puzzle_hash,
         # otherwise, the fees will be sent to the users. Using 690783650
         self.pool_fee_puzzle_hash: bytes32 = bytes32(decode_puzzle_hash(pool_config["pool_fee_address"]))
-
-        # This is the wallet fingerprint and ID for the wallet spending the funds from `self.default_target_puzzle_hash`
-        self.wallet_fingerprint = pool_config["wallet_fingerprint"]
-        self.wallet_id = pool_config["wallet_id"]
 
         # We need to check for slow farmers. If farmers cannot submit proofs in time, they won't be able to win
         # any rewards either. This number can be tweaked to be more or less strict. More strict ensures everyone
@@ -181,8 +183,8 @@ class Pool:
         # Tasks (infinite While loops) for different purposes
         self.confirm_partials_loop_task: Optional[asyncio.Task] = None
         self.collect_pool_rewards_loop_task: Optional[asyncio.Task] = None
-        self.create_payment_loop_task: Optional[asyncio.Task] = None
-        self.submit_payment_loop_task: Optional[asyncio.Task] = None
+        self.create_payment_loop_tasks: List[asyncio.Task] = []
+        self.submit_payment_loop_tasks: List[asyncio.Task] = []
         self.get_peak_loop_task: Optional[asyncio.Task] = None
         self.pool_estimated_size_loop_task: Optional[asyncio.Task] = None
         self.missing_partials_loop_task: Optional[asyncio.Task] = None
@@ -191,10 +193,6 @@ class Pool:
         self.node_rpc_client: Optional[FullNodeRpcClient] = None
         self.node_hostname = pool_config.get("node_hostname") or self.config["self_hostname"]
         self.node_rpc_port = pool_config["node_rpc_port"]
-        self.wallet_rpc_client: Optional[WalletRpcClient] = None
-        self.wallet_rpc_port = pool_config["wallet_rpc_port"]
-        self.wallet_hostname = pool_config.get("wallet_hostname") or self.config["self_hostname"]
-        self.wallet_ssl_dir = pool_config.get("wallet_ssl_dir")
 
     async def start(self):
         await self.store.connect()
@@ -204,26 +202,27 @@ class Pool:
             self.node_hostname, uint16(self.node_rpc_port), DEFAULT_ROOT_PATH, self.config
         )
 
-        if self.wallet_ssl_dir:
-            self.wallet_rpc_client = await WalletRpcClient.create(
-                self.wallet_hostname,
-                uint16(self.wallet_rpc_port),
-                pathlib.Path(self.wallet_ssl_dir),
-                {
-                    'private_ssl_ca': {
-                        'crt': 'private_ca.crt',
-                        'key': 'private_ca.key',
+        for wallet in self.wallets:
+            if wallet['ssl_dir']:
+                wallet['rpc_client'] = await WalletRpcClient.create(
+                    wallet['hostname'],
+                    uint16(wallet['rpc_port']),
+                    pathlib.Path(wallet['ssl_dir']),
+                    {
+                        'private_ssl_ca': {
+                            'crt': 'private_ca.crt',
+                            'key': 'private_ca.key',
+                        },
+                        'daemon_ssl': {
+                            'private_crt': 'private_daemon.crt',
+                            'private_key': 'private_daemon.key',
+                        },
                     },
-                    'daemon_ssl': {
-                        'private_crt': 'private_daemon.crt',
-                        'private_key': 'private_daemon.key',
-                    },
-                },
-            )
-        else:
-            self.wallet_rpc_client = await WalletRpcClient.create(
-                self.wallet_hostname, uint16(self.wallet_rpc_port), DEFAULT_ROOT_PATH, self.config
-            )
+                )
+            else:
+                wallet['rpc_client'] = await WalletRpcClient.create(
+                    wallet['hostname'], uint16(wallet['rpc_port']), DEFAULT_ROOT_PATH, self.config
+                )
 
         while True:
             try:
@@ -235,21 +234,29 @@ class Pool:
                 break
 
         try:
-            res = await self.wallet_rpc_client.log_in_and_skip(fingerprint=self.wallet_fingerprint)
-            if not res["success"]:
-                raise ValueError(f"Error logging in: {res['error']}. Make sure your config fingerprint is correct.")
-            self.log.info(f"Logging in: {res}")
-            res = await self.wallet_rpc_client.get_wallet_balance(self.wallet_id)
-            self.log.info(f"Obtaining balance: {res}")
+            for wallet in self.wallets:
+                res = await wallet['rpc_client'].log_in_and_skip(
+                    fingerprint=wallet['fingerprint']
+                )
+                if not res["success"]:
+                    raise ValueError(f"Error logging in: {res['error']}. Make sure your config fingerprint is correct.")
+                self.log.info(f"Logging in: {res}")
+                res = await wallet['rpc_client'].get_wallet_balance(wallet['id'])
+                self.log.info(f"Obtaining balance: {res}")
         except aiohttp.client_exceptions.ClientConnectorError as e:
-            self.log.error('Failed to connect to the wallet: %s', e)
+            self.log.error('Failed to connect to the wallet %s: %s', wallet['fingerprint'], e)
 
         self.scan_p2_singleton_puzzle_hashes = await self.store.get_pay_to_singleton_phs()
 
         self.confirm_partials_loop_task = asyncio.create_task(self.confirm_partials_loop())
         self.collect_pool_rewards_loop_task = asyncio.create_task(self.collect_pool_rewards_loop())
-        self.create_payment_loop_task = asyncio.create_task(self.create_payment_loop())
-        self.submit_payment_loop_task = asyncio.create_task(self.submit_payment_loop())
+        for wallet in self.wallets:
+            self.create_payment_loop_tasks.append(
+                asyncio.create_task(self.create_payment_loop(wallet))
+            )
+            self.submit_payment_loop_tasks.append(
+                asyncio.create_task(self.submit_payment_loop(wallet))
+            )
         self.get_peak_loop_task = asyncio.create_task(self.get_peak_loop())
         self.pool_estimated_size_loop_task = asyncio.create_task(
             self.partials.pool_estimated_size_loop()
@@ -264,10 +271,10 @@ class Pool:
             self.confirm_partials_loop_task.cancel()
         if self.collect_pool_rewards_loop_task is not None:
             self.collect_pool_rewards_loop_task.cancel()
-        if self.create_payment_loop_task is not None:
-            self.create_payment_loop_task.cancel()
-        if self.submit_payment_loop_task is not None:
-            self.submit_payment_loop_task.cancel()
+        for create_payment_loop_task in self.create_payment_loop_tasks:
+            create_payment_loop_task.cancel()
+        for submit_payment_loop_task in self.submit_payment_loop_tasks:
+            submit_payment_loop_task.cancel()
         if self.get_peak_loop_task is not None:
             self.get_peak_loop_task.cancel()
         if self.pool_estimated_size_loop_task is not None:
@@ -280,8 +287,9 @@ class Pool:
         # Await task that can use database connection
         await self.confirm_partials_loop_task
 
-        self.wallet_rpc_client.close()
-        await self.wallet_rpc_client.await_closed()
+        for wallet in self.wallets:
+            wallet['rpc_client'].close()
+            await wallet['rpc_client'].await_closed()
         self.node_rpc_client.close()
         await self.node_rpc_client.await_closed()
 
@@ -345,7 +353,10 @@ class Pool:
 
                 try:
                     # Get the wallet as last since its not absolutely critical for pool operation
-                    self.wallet_synced = await self.wallet_rpc_client.get_synced()
+                    wallet_synced = True
+                    for wallet in self.wallets:
+                        wallet_synced &= await wallet['rpc_client'].get_synced()
+                    self.wallet_synced = wallet_synced
                 except aiohttp.client_exceptions.ClientConnectorError as e:
                     self.wallet_synced = False
                     self.log.error('Failed to connect to wallet: %s', e)
@@ -520,7 +531,7 @@ class Pool:
                 self.log.error("Unexpected error in collect_pool_rewards_loop", exc_info=True)
                 await asyncio.sleep(5)
 
-    async def create_payment_loop(self):
+    async def create_payment_loop(self, wallet):
         """
         Calculates the points of each farmer, and splits the total funds received into coins for each farmer.
         Saves the transactions that we should make, to `amount_to_distribute`.
@@ -532,7 +543,7 @@ class Pool:
                     await asyncio.sleep(60)
                     continue
 
-                if await self.store.pending_payment_targets_exists():
+                if await self.store.pending_payment_targets_exists(wallet['address']):
                     self.log.warning("Pending payments, waiting")
                     await asyncio.sleep(60)
                     continue
@@ -540,7 +551,7 @@ class Pool:
                 self.log.info("Starting to create payment")
 
                 coin_records: List[CoinRecord] = await self.node_rpc_client.get_coin_records_by_puzzle_hash(
-                    self.default_target_puzzle_hash,
+                    wallet['address'],
                     include_spent_coins=False,
                     start_height=self.scan_start_height,
                 )
@@ -617,7 +628,13 @@ class Pool:
                         for points, ph in points_and_ph:
                             if points > 0:
                                 additions_sub_list.append({"puzzle_hash": ph, "amount": points * mojo_per_point})
-                        await self.store.add_payout(coin_records, total_amount_claimed, pool_coin_amount, additions_sub_list)
+                        await self.store.add_payout(
+                            coin_records,
+                            wallet['address'],
+                            total_amount_claimed,
+                            pool_coin_amount,
+                            additions_sub_list,
+                        )
 
                         # Subtract the points from each farmer
                         await self.store.clear_farmer_points()
@@ -632,13 +649,13 @@ class Pool:
                 self.log.error(f"Unexpected error in create_payments_loop: {e}", exc_info=True)
                 await asyncio.sleep(5)
 
-    async def submit_payment_loop(self):
+    async def submit_payment_loop(self, wallet):
         while True:
             try:
                 peak_height = self.blockchain_state["peak"].height
                 try:
-                    await self.wallet_rpc_client.log_in_and_skip(fingerprint=self.wallet_fingerprint)
-                except aiohttp.client_exceptions.ClientConnectorError as e:
+                    await wallet['rpc_client'].log_in_and_skip(fingerprint=wallet['fingerprint'])
+                except aiohttp.client_exceptions.ClientConnectorError:
                     self.log.warning('Failed to connect to wallet, retrying in 30 seconds')
                     await asyncio.sleep(30)
                     continue
@@ -648,7 +665,10 @@ class Pool:
                     await asyncio.sleep(60)
                     continue
 
-                payment_targets = await self.store.get_pending_payment_targets(self.max_additions_per_transaction)
+                payment_targets = await self.store.get_pending_payment_targets(
+                    wallet['address'],
+                    self.max_additions_per_transaction,
+                )
                 if not payment_targets:
                     await asyncio.sleep(60)
                     continue
@@ -660,8 +680,8 @@ class Pool:
                 # blockchain_fee = 0.00001 * (10 ** 12) * len(payment_targets)
                 blockchain_fee: uint64 = uint64(0)
                 try:
-                    transaction: TransactionRecord = await self.wallet_rpc_client.send_transaction_multi(
-                        self.wallet_id, payment_targets, fee=blockchain_fee
+                    transaction: TransactionRecord = await wallet['rpc_client'].send_transaction_multi(
+                        wallet['id'], payment_targets, fee=blockchain_fee
                     )
                 except ValueError as e:
                     self.log.error(f"Error making payment: {e}")
@@ -676,7 +696,7 @@ class Pool:
                         peak_height - transaction.confirmed_at_height
                     ) > self.confirmation_security_threshold
                 ):
-                    transaction = await self.wallet_rpc_client.get_transaction(self.wallet_id, transaction.name)
+                    transaction = await wallet['rpc_client'].get_transaction(wallet['id'], transaction.name)
                     peak_height = self.blockchain_state["peak"].height
                     self.log.info(
                         f"Waiting for transaction to obtain {self.confirmation_security_threshold} confirmations"
@@ -994,7 +1014,7 @@ class Pool:
 
         # Validate state of the singleton
         is_pool_member = True
-        if singleton_tip_state.target_puzzle_hash != self.default_target_puzzle_hash:
+        if singleton_tip_state.target_puzzle_hash not in self.default_target_puzzle_hashes:
             self.log.info(
                 f"Wrong target puzzle hash: {singleton_tip_state.target_puzzle_hash} for launcher_id {launcher_id}"
             )

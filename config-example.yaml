@@ -8,13 +8,17 @@ pool_fee: 0.01
 pool_url: http://10.0.0.45
 min_difficulty: 10
 default_difficulty: 10
-default_target_address: txch1h8vdax8vtspx7yt8kz6cwu2awymlgwmdr4qts8v643kusd2lmc5qht7ltq
 pool_fee_address: txch1jhydnk47xl40jn3pgwjd708uk2wqzqexagy9xxjcwt2qeaumv3fqcrw6e2
-wallet_fingerprint: 3967641394
 authentication_token_timeout: 5
-wallet_id: 1
+wallets:
+  - address: txch1h8vdax8vtspx7yt8kz6cwu2awymlgwmdr4qts8v643kusd2lmc5qht7ltq
+    id: 1
+    fingerprint: 3967641394
+    rpc_port: 9256
+    hostname: localhost
+    ssl_dir: ""
+node_hostname: localhost
 node_rpc_port: 8555
-wallet_rpc_port: 9256
 partial_time_limit: 25
 partial_confirmation_delay: 300
 scan_start_height: 1000
