@@ -372,7 +372,7 @@ class PgsqlPoolStore(AbstractPoolStore):
             "amount": i[3],
         } for i in await self._execute(
             "SELECT id, payout_id, puzzle_hash, amount FROM payout_address WHERE pool_puzzle_hash = %s AND transaction IS NULL LIMIT %s",
-            (taget_puzzle_hash.hex(), limit),
+            (pool_puzzle_hash.hex(), limit),
         )]
 
     async def confirm_transaction(self, transaction):
