@@ -137,13 +137,18 @@ class PoolServer:
                 PoolErrorCode.FARMER_NOT_KNOWN, f"Farmer with launcher_id {launcher_id.hex()} unknown."
             )
 
+        if farmer_record.singleton_tip_state.target_puzzle_hash in self.pool.default_target_puzzle_hashes:
+            target_puzzle_hash = farmer_record.singleton_tip_state.target_puzzle_hash
+        else:
+            target_puzzle_hash = self.pool.default_target_puzzle_hashes[0]
+
         # Validate provided signature
         signature: G2Element = G2Element.from_bytes(hexstr_to_bytes(request_obj.rel_url.query["signature"]))
         message: bytes32 = std_hash(
             AuthenticationPayload(
                 "get_farmer",
                 launcher_id,
-                farmer_record.singleton_tip_state.target_puzzle_hash,
+                target_puzzle_hash,
                 authentication_token,
             )
         )
