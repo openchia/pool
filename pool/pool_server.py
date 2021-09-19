@@ -115,7 +115,7 @@ class PoolServer:
             POOL_PROTOCOL_VERSION,
             str(self.pool.pool_fee),
             self.pool.info_description,
-            self.pool.wallets[0]['address'],
+            self.pool.wallets[0]['puzzle_hash'],
             self.pool.authentication_token_timeout,
         )
         return obj_to_response(res)
@@ -140,7 +140,7 @@ class PoolServer:
         # Validate provided signature
         signature: G2Element = G2Element.from_bytes(hexstr_to_bytes(request_obj.rel_url.query["signature"]))
         message: bytes32 = std_hash(
-            AuthenticationPayload("get_farmer", launcher_id, self.pool.wallets[0]['address'], authentication_token)
+            AuthenticationPayload("get_farmer", launcher_id, self.pool.wallets[0]['puzzle_hash'], authentication_token)
         )
         if not AugSchemeMPL.verify(farmer_record.authentication_public_key, message, signature):
             return error_response(
