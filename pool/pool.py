@@ -130,6 +130,7 @@ class Pool:
             self.default_target_puzzle_hashes.append(wallet['puzzle_hash'])
             wallet['hostname'] = wallet.get("hostname") or self.config["self_hostname"]
             wallet['ssl_dir'] = wallet.get("ssl_dir")
+            wallet['synced'] = False
             self.wallets.append(wallet)
 
         # The pool fees will be sent to this address. This MUST be on a different key than the target_puzzle_hash,
