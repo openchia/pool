@@ -140,7 +140,12 @@ class PoolServer:
         # Validate provided signature
         signature: G2Element = G2Element.from_bytes(hexstr_to_bytes(request_obj.rel_url.query["signature"]))
         message: bytes32 = std_hash(
-            AuthenticationPayload("get_farmer", launcher_id, self.pool.wallets[0]['puzzle_hash'], authentication_token)
+            AuthenticationPayload(
+                "get_farmer",
+                launcher_id,
+                farmer_record.singleton_tip_state.target_puzzle_hash,
+                authentication_token,
+            )
         )
         if not AugSchemeMPL.verify(farmer_record.authentication_public_key, message, signature):
             return error_response(
