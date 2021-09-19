@@ -126,8 +126,8 @@ class Pool:
         self.default_target_puzzle_hashes: List[bytes32] = []
         self.wallets = []
         for wallet in pool_config["wallets"]:
-            wallet['address'] = bytes32(decode_puzzle_hash(wallet['address']))
-            self.default_target_puzzle_hashes.append(wallet['address'])
+            wallet['puzzle_hash'] = bytes32(decode_puzzle_hash(wallet['address']))
+            self.default_target_puzzle_hashes.append(wallet['puzzle_hash'])
             wallet['hostname'] = wallet.get("hostname") or self.config["self_hostname"]
             wallet['ssl_dir'] = wallet.get("ssl_dir")
             self.wallets.append(wallet)
@@ -170,9 +170,6 @@ class Pool:
 
         # Keeps track of the latest state of our node
         self.blockchain_state = {"peak": None}
-
-        # Whether or not the wallet is synced (required to make payments)
-        self.wallet_synced = False
 
         # We target these many partials for this number of seconds. We adjust after receiving this many partials.
         self.number_of_partials_target: int = pool_config["number_of_partials_target"]
@@ -351,15 +348,14 @@ class Pool:
                     'blockchain_avg_block_time': await self.get_average_block_time(),
                 }))
 
-                try:
-                    # Get the wallet as last since its not absolutely critical for pool operation
-                    wallet_synced = True
-                    for wallet in self.wallets:
-                        wallet_synced &= await wallet['rpc_client'].get_synced()
-                    self.wallet_synced = wallet_synced
-                except aiohttp.client_exceptions.ClientConnectorError as e:
-                    self.wallet_synced = False
-                    self.log.error('Failed to connect to wallet: %s', e)
+                # Get the wallets as last since its not absolutely critical for pool operation
+                for wallet in self.wallets:
+                    try:
+                        wallet['synced'] = await wallet['rpc_client'].get_synced()
+                    except aiohttp.client_exceptions.ClientConnectorError as e:
+                        self.log.error(
+                            'Failed to connect to wallet %s: %s', wallet['fingerprint'], e
+                        )
                 await asyncio.sleep(30)
             except asyncio.CancelledError:
                 self.log.info("Cancelled get_peak_loop, closing")
@@ -543,15 +539,15 @@ class Pool:
                     await asyncio.sleep(60)
                     continue
 
-                if await self.store.pending_payment_targets_exists(wallet['address']):
+                if await self.store.pending_payment_targets_exists(wallet['puzzle_hash']):
                     self.log.warning("Pending payments, waiting")
                     await asyncio.sleep(60)
                     continue
 
-                self.log.info("Starting to create payment")
+                self.log.debug("Starting to create payment (wallet %s)", wallet['fingerprint'])
 
                 coin_records: List[CoinRecord] = await self.node_rpc_client.get_coin_records_by_puzzle_hash(
-                    wallet['address'],
+                    wallet['puzzle_hash'],
                     include_spent_coins=False,
                     start_height=self.scan_start_height,
                 )
@@ -592,7 +588,7 @@ class Pool:
                         total_amount_claimed += c.coin.amount
 
                 if len(coin_records) == 0:
-                    self.log.info("No funds to distribute.")
+                    self.log.info("No funds to distribute (wallet %s).", wallet['fingerprint'])
                     await asyncio.sleep(self.payment_interval)
                     continue
 
@@ -630,7 +626,7 @@ class Pool:
                                 additions_sub_list.append({"puzzle_hash": ph, "amount": points * mojo_per_point})
                         await self.store.add_payout(
                             coin_records,
-                            wallet['address'],
+                            wallet['puzzle_hash'],
                             total_amount_claimed,
                             pool_coin_amount,
                             additions_sub_list,
@@ -643,7 +639,9 @@ class Pool:
 
                 await asyncio.sleep(self.payment_interval)
             except asyncio.CancelledError:
-                self.log.info("Cancelled create_payments_loop, closing")
+                self.log.info(
+                    "Cancelled create_payments_loop (wallet %s), closing", wallet['fingerprint']
+                )
                 return
             except Exception as e:
                 self.log.error(f"Unexpected error in create_payments_loop: {e}", exc_info=True)
@@ -656,17 +654,20 @@ class Pool:
                 try:
                     await wallet['rpc_client'].log_in_and_skip(fingerprint=wallet['fingerprint'])
                 except aiohttp.client_exceptions.ClientConnectorError:
-                    self.log.warning('Failed to connect to wallet, retrying in 30 seconds')
+                    self.log.warning(
+                        'Failed to connect to wallet %s, retrying in 30 seconds',
+                        wallet['fingerprint'],
+                    )
                     await asyncio.sleep(30)
                     continue
 
-                if not self.blockchain_state["sync"]["synced"] or not self.wallet_synced:
-                    self.log.warning("Waiting for wallet sync")
+                if not self.blockchain_state["sync"]["synced"] or not wallet['synced']:
+                    self.log.warning("Waiting for wallet %s sync", wallet['fingerprint'])
                     await asyncio.sleep(60)
                     continue
 
                 payment_targets = await self.store.get_pending_payment_targets(
-                    wallet['address'],
+                    wallet['puzzle_hash'],
                     self.max_additions_per_transaction,
                 )
                 if not payment_targets:
