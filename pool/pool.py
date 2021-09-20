@@ -131,6 +131,7 @@ class Pool:
             wallet['hostname'] = wallet.get("hostname") or self.config["self_hostname"]
             wallet['ssl_dir'] = wallet.get("ssl_dir")
             wallet['synced'] = False
+            wallet['payment_lock'] = asyncio.Lock()
             self.wallets.append(wallet)
 
         # The pool fees will be sent to this address. This MUST be on a different key than the target_puzzle_hash,
@@ -547,96 +548,97 @@ class Pool:
 
                 self.log.debug("Starting to create payment (wallet %s)", wallet['fingerprint'])
 
-                coin_records: List[CoinRecord] = await self.node_rpc_client.get_coin_records_by_puzzle_hash(
-                    wallet['puzzle_hash'],
-                    include_spent_coins=False,
-                    start_height=self.scan_start_height,
-                )
+                async with wallet['payment_lock']:
+                    coin_records: List[CoinRecord] = await self.node_rpc_client.get_coin_records_by_puzzle_hash(
+                        wallet['puzzle_hash'],
+                        include_spent_coins=False,
+                        start_height=self.scan_start_height,
+                    )
 
-                last_singletons: List[str] = await self.store.get_last_block_singletons()
+                    last_singletons: List[str] = await self.store.get_last_block_singletons()
 
-                total_amount_claimed = 0
-                async with self.collect_and_payment_lock:
-                    for c in list(coin_records):
-                        if c.coin.parent_coin_info.hex() not in last_singletons:
-                            result = None
-                            try:
-                                result = await find_singleton_from_coin(
-                                    self.node_rpc_client, self.store,
-                                    self.blockchain_state['peak'].height, c, c.coin.parent_coin_info,
-                                    list(self.scan_p2_singleton_puzzle_hashes),
-                                )
-                            except Exception:
-                                self.log.error('Failed to find singleton', exc_info=True)
+                    total_amount_claimed = 0
+                    async with self.collect_and_payment_lock:
+                        for c in list(coin_records):
+                            if c.coin.parent_coin_info.hex() not in last_singletons:
+                                result = None
+                                try:
+                                    result = await find_singleton_from_coin(
+                                        self.node_rpc_client, self.store,
+                                        self.blockchain_state['peak'].height, c, c.coin.parent_coin_info,
+                                        list(self.scan_p2_singleton_puzzle_hashes),
+                                    )
+                                except Exception:
+                                    self.log.error('Failed to find singleton', exc_info=True)
 
-                            if result is not None:
-                                self.log.info('Coin %r was not absorbeb by us', c.coin)
-                                absorb_coin, singleton_coin, farmer = result
-                                pool_size, etw = await self.partials.get_pool_size_and_etw()
-                                await self.store.add_block(
-                                    absorb_coin, singleton_coin, farmer, pool_size, etw,
-                                )
-                                await self.run_hook('absorb', [
-                                    (absorb_coin, singleton_coin, farmer)
-                                ])
-                            else:
-                                coin_records.remove(c)
-                                self.log.info(
-                                    "Coin %s not in singleton, skipping", c.coin.amount / (10 ** 12)
-                                )
-                                continue
+                                if result is not None:
+                                    self.log.info('Coin %r was not absorbeb by us', c.coin)
+                                    absorb_coin, singleton_coin, farmer = result
+                                    pool_size, etw = await self.partials.get_pool_size_and_etw()
+                                    await self.store.add_block(
+                                        absorb_coin, singleton_coin, farmer, pool_size, etw,
+                                    )
+                                    await self.run_hook('absorb', [
+                                        (absorb_coin, singleton_coin, farmer)
+                                    ])
+                                else:
+                                    coin_records.remove(c)
+                                    self.log.info(
+                                        "Coin %s not in singleton, skipping", c.coin.amount / (10 ** 12)
+                                    )
+                                    continue
 
-                        total_amount_claimed += c.coin.amount
+                            total_amount_claimed += c.coin.amount
 
-                if len(coin_records) == 0:
-                    self.log.info("No funds to distribute (wallet %s).", wallet['fingerprint'])
-                    await asyncio.sleep(self.payment_interval)
-                    continue
+                    if len(coin_records) == 0:
+                        self.log.info("No funds to distribute (wallet %s).", wallet['fingerprint'])
+                        await asyncio.sleep(self.payment_interval)
+                        continue
 
-                pool_coin_amount = int(total_amount_claimed * self.pool_fee)
-                amount_to_distribute = total_amount_claimed - pool_coin_amount
+                    pool_coin_amount = int(total_amount_claimed * self.pool_fee)
+                    amount_to_distribute = total_amount_claimed - pool_coin_amount
 
-                if total_amount_claimed < calculate_pool_reward(uint32(1)):  # 1.75 XCH
-                    self.log.info(f"Do not have enough funds to distribute: {total_amount_claimed}, skipping payout")
-                    await asyncio.sleep(self.payment_interval)
-                    continue
+                    if total_amount_claimed < calculate_pool_reward(uint32(1)):  # 1.75 XCH
+                        self.log.info(f"Do not have enough funds to distribute: {total_amount_claimed}, skipping payout")
+                        await asyncio.sleep(self.payment_interval)
+                        continue
 
-                self.log.info(f"Total amount claimed: {total_amount_claimed / (10 ** 12)}")
-                self.log.info(f"Pool coin amount (includes blockchain fee) {pool_coin_amount  / (10 ** 12)}")
-                self.log.info(f"Total amount to distribute: {amount_to_distribute  / (10 ** 12)}")
+                    self.log.info(f"Total amount claimed: {total_amount_claimed / (10 ** 12)}")
+                    self.log.info(f"Pool coin amount (includes blockchain fee) {pool_coin_amount  / (10 ** 12)}")
+                    self.log.info(f"Total amount to distribute: {amount_to_distribute  / (10 ** 12)}")
 
-                async with self.store.lock:
-                    # Get the points of each farmer, as well as payout instructions. Here a chia address is used,
-                    # but other blockchain addresses can also be used.
-                    if self.pool_config.get('reward_system') == 'PPLNS':
-                        points_and_ph, total_points = await self.partials.get_farmer_points_and_payout_instructions()
-                    else:
-                        points_and_ph: List[
-                            Tuple[uint64, bytes]
-                        ] = await self.store.get_farmer_points_and_payout_instructions()
-                        total_points = sum([pt for (pt, ph) in points_and_ph])
-                    if total_points > 0:
-                        mojo_per_point = floor(amount_to_distribute / total_points)
-                        self.log.info(f"Paying out {mojo_per_point} mojo / point")
+                    async with self.store.lock:
+                        # Get the points of each farmer, as well as payout instructions. Here a chia address is used,
+                        # but other blockchain addresses can also be used.
+                        if self.pool_config.get('reward_system') == 'PPLNS':
+                            points_and_ph, total_points = await self.partials.get_farmer_points_and_payout_instructions()
+                        else:
+                            points_and_ph: List[
+                                Tuple[uint64, bytes]
+                            ] = await self.store.get_farmer_points_and_payout_instructions()
+                            total_points = sum([pt for (pt, ph) in points_and_ph])
+                        if total_points > 0:
+                            mojo_per_point = floor(amount_to_distribute / total_points)
+                            self.log.info(f"Paying out {mojo_per_point} mojo / point")
 
-                        additions_sub_list: List[Dict] = [
-                            {"puzzle_hash": self.pool_fee_puzzle_hash, "amount": pool_coin_amount}
-                        ]
-                        for points, ph in points_and_ph:
-                            if points > 0:
-                                additions_sub_list.append({"puzzle_hash": ph, "amount": points * mojo_per_point})
-                        await self.store.add_payout(
-                            coin_records,
-                            wallet['puzzle_hash'],
-                            total_amount_claimed,
-                            pool_coin_amount,
-                            additions_sub_list,
-                        )
+                            additions_sub_list: List[Dict] = [
+                                {"puzzle_hash": self.pool_fee_puzzle_hash, "amount": pool_coin_amount}
+                            ]
+                            for points, ph in points_and_ph:
+                                if points > 0:
+                                    additions_sub_list.append({"puzzle_hash": ph, "amount": points * mojo_per_point})
+                            await self.store.add_payout(
+                                coin_records,
+                                wallet['puzzle_hash'],
+                                total_amount_claimed,
+                                pool_coin_amount,
+                                additions_sub_list,
+                            )
 
-                        # Subtract the points from each farmer
-                        await self.store.clear_farmer_points()
-                    else:
-                        self.log.info(f"No points for any farmer. Waiting {self.payment_interval}")
+                            # Subtract the points from each farmer
+                            await self.store.clear_farmer_points()
+                        else:
+                            self.log.info(f"No points for any farmer. Waiting {self.payment_interval}")
 
                 await asyncio.sleep(self.payment_interval)
             except asyncio.CancelledError:
@@ -667,50 +669,51 @@ class Pool:
                     await asyncio.sleep(60)
                     continue
 
-                payment_targets = await self.store.get_pending_payment_targets(
-                    wallet['puzzle_hash'],
-                    self.max_additions_per_transaction,
-                )
-                if not payment_targets:
-                    await asyncio.sleep(60)
-                    continue
-
-                self.log.info(f"Submitting a payment: {payment_targets}")
-
-                # TODO(pool): make sure you have enough to pay the blockchain fee, this will be taken out of the pool
-                # fee itself. Alternatively you can set it to 0 and wait longer
-                # blockchain_fee = 0.00001 * (10 ** 12) * len(payment_targets)
-                blockchain_fee: uint64 = uint64(0)
-                try:
-                    transaction: TransactionRecord = await wallet['rpc_client'].send_transaction_multi(
-                        wallet['id'], payment_targets, fee=blockchain_fee
+                async with wallet['payment_lock']:
+                    payment_targets = await self.store.get_pending_payment_targets(
+                        wallet['puzzle_hash'],
+                        self.max_additions_per_transaction,
                     )
-                except ValueError as e:
-                    self.log.error(f"Error making payment: {e}")
-                    await asyncio.sleep(10)
-                    continue
+                    if not payment_targets:
+                        await asyncio.sleep(60)
+                        continue
 
-                self.log.info(f"Transaction: {transaction}")
-                await self.store.add_transaction(transaction, payment_targets)
+                    self.log.info(f"Submitting a payment: {payment_targets}")
 
-                while (
-                    not transaction.confirmed or not (
-                        peak_height - transaction.confirmed_at_height
-                    ) > self.confirmation_security_threshold
-                ):
-                    transaction = await wallet['rpc_client'].get_transaction(wallet['id'], transaction.name)
-                    peak_height = self.blockchain_state["peak"].height
-                    self.log.info(
-                        f"Waiting for transaction to obtain {self.confirmation_security_threshold} confirmations"
-                    )
-                    if not transaction.confirmed:
-                        self.log.info(f"Not confirmed. In mempool? {transaction.is_in_mempool()}")
-                    else:
-                        self.log.info(f"Confirmations: {peak_height - transaction.confirmed_at_height}")
-                    await asyncio.sleep(10)
+                    # TODO(pool): make sure you have enough to pay the blockchain fee, this will be taken out of the pool
+                    # fee itself. Alternatively you can set it to 0 and wait longer
+                    # blockchain_fee = 0.00001 * (10 ** 12) * len(payment_targets)
+                    blockchain_fee: uint64 = uint64(0)
+                    try:
+                        transaction: TransactionRecord = await wallet['rpc_client'].send_transaction_multi(
+                            wallet['id'], payment_targets, fee=blockchain_fee
+                        )
+                    except ValueError as e:
+                        self.log.error(f"Error making payment: {e}")
+                        await asyncio.sleep(10)
+                        continue
 
-                await self.store.confirm_transaction(transaction)
-                self.log.info(f"Successfully confirmed payments {payment_targets}")
+                    self.log.info(f"Transaction: {transaction}")
+                    await self.store.add_transaction(transaction, payment_targets)
+
+                    while (
+                        not transaction.confirmed or not (
+                            peak_height - transaction.confirmed_at_height
+                        ) > self.confirmation_security_threshold
+                    ):
+                        transaction = await wallet['rpc_client'].get_transaction(wallet['id'], transaction.name)
+                        peak_height = self.blockchain_state["peak"].height
+                        self.log.info(
+                            f"Waiting for transaction to obtain {self.confirmation_security_threshold} confirmations"
+                        )
+                        if not transaction.confirmed:
+                            self.log.info(f"Not confirmed. In mempool? {transaction.is_in_mempool()}")
+                        else:
+                            self.log.info(f"Confirmations: {peak_height - transaction.confirmed_at_height}")
+                        await asyncio.sleep(10)
+
+                    await self.store.confirm_transaction(transaction)
+                    self.log.info(f"Successfully confirmed payments {payment_targets}")
 
             except asyncio.CancelledError:
                 self.log.info("Cancelled submit_payment_loop, closing")
