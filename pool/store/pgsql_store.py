@@ -346,7 +346,7 @@ class PgsqlPoolStore(AbstractPoolStore):
                 "(payout_id, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction) "
                 "VALUES "
                 "(%%s,       %%s,         %%s,              %s,          %%s,    %%s,         %%s,              NULL)" % (farmer,),
-                (payout_id, i["puzzle_hash"].hex(), pool_puzzle_hash.hex(), i["amount"], i.get('referral'), i.get('referral_amount')),
+                (payout_id, i["puzzle_hash"].hex(), pool_puzzle_hash.hex(), i["amount"], i.get('referral'), i.get('referral_amount') or 0),
             )
         return payout_id
 
