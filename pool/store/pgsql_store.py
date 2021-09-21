@@ -421,9 +421,9 @@ class PgsqlPoolStore(AbstractPoolStore):
     async def get_referrals(self):
         # TODO: only get launchers id getting paid
         return {
-            i[1]: {
+            bytes32(bytes.fromhex(i[1])): {
                 'id': i[0],
-                'target_payout_instructions': i[2],
+                'target_payout_instructions': bytes32(bytes.fromhex(i[2])),
             } for i in await self._execute(
                 "SELECT r.id, fl.payout_instructions, fr.payout_instructions "
                 "FROM referral_referral r INNER JOIN farmer fr ON r.referer_id = fr.launcher_id "

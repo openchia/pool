@@ -638,8 +638,8 @@ class Pool:
                                     if ph in referrals:
                                         # Calculate original value of the share so we can
                                         # divide between pool fee and referral fee
-                                        mojos_fee = (mojos / (1 - self.pool_fee)) - mojos
-                                        referral_fee = mojos_fee * 0.5  # 50% fixed for now
+                                        mojos_fee = (D(mojos) / (1 - D(self.pool_fee))) - mojos
+                                        referral_fee = floor(mojos_fee * D(0.5))  # 50% fixed for now
                                         total_referral_fees += referral_fee
                                         # Subtract the referral fee from the pool fee
                                         pool_coin_amount -= referral_fee
@@ -652,7 +652,7 @@ class Pool:
                                         additions[target_ph]['amount'] += referral_fee
 
                                         additions[ph]['referral'] = referral['id']
-                                        additions[ph]['referral_amount'] = referral['referral_fee']
+                                        additions[ph]['referral_amount'] = referral_fee
 
                             # Add pool fee
                             additions[self.pool_fee_puzzle_hash] = {'amount': pool_coin_amount}
