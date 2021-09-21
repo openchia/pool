@@ -348,6 +348,11 @@ class PgsqlPoolStore(AbstractPoolStore):
                 "(%%s,       %%s,         %%s,              %s,          %%s,    %%s,         %%s,              NULL)" % (farmer,),
                 (payout_id, i["puzzle_hash"].hex(), pool_puzzle_hash.hex(), i["amount"], i.get('referral'), i.get('referral_amount') or 0),
             )
+            if referral := i.get('referral'):
+                await self._execute(
+                    "UPDATE referral_referral SET total_income += %s WHERE id = %s",
+                    (i.get('referral_amount') or 0, referral),
+                )
         return payout_id
 
     async def add_transaction(self, transaction, payment_targets) -> None:
