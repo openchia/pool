@@ -9,6 +9,7 @@ import subprocess
 import time
 import traceback
 from asyncio import Task
+from decimal import Decimal as D
 from math import floor
 from typing import Dict, Optional, Set, List, Tuple, Callable
 
@@ -617,22 +618,52 @@ class Pool:
                                 Tuple[uint64, bytes]
                             ] = await self.store.get_farmer_points_and_payout_instructions()
                             total_points = sum([pt for (pt, ph) in points_and_ph])
+
+                        total_referral_fees = 0
                         if total_points > 0:
-                            mojo_per_point = floor(amount_to_distribute / total_points)
+                            mojo_per_point = D(amount_to_distribute) / D(total_points)
                             self.log.info(f"Paying out {mojo_per_point} mojo / point")
 
-                            additions_sub_list: List[Dict] = [
-                                {"puzzle_hash": self.pool_fee_puzzle_hash, "amount": pool_coin_amount}
-                            ]
+                            referrals = await self.store.get_referrals()
+
+                            additions: Dict = {}
                             for points, ph in points_and_ph:
                                 if points > 0:
-                                    additions_sub_list.append({"puzzle_hash": ph, "amount": points * mojo_per_point})
+                                    if ph not in additions:
+                                        additions[ph] = {'amount': 0}
+
+                                    mojos = floor(points * mojo_per_point)
+                                    additions[ph]['amount'] += mojos
+
+                                    if ph in referrals:
+                                        # Calculate original value of the share so we can
+                                        # divide between pool fee and referral fee
+                                        mojos_fee = (mojos / (1 - self.pool_fee)) - mojos
+                                        referral_fee = mojos_fee * 0.5  # 50% fixed for now
+                                        total_referral_fees += referral_fee
+                                        # Subtract the referral fee from the pool fee
+                                        pool_coin_amount -= referral_fee
+
+                                        referral = referrals[ph]
+                                        target_ph = referral['target_payout_instructions']
+                                        if target_ph not in additions:
+                                            additions[target_ph] = {'amount': 0}
+
+                                        additions[target_ph]['amount'] += referral_fee
+
+                                        additions[ph]['referral'] = referral['id']
+                                        additions[ph]['referral_amount'] = referral['referral_fee']
+
+                            # Add pool fee
+                            additions[self.pool_fee_puzzle_hash] = {'amount': pool_coin_amount}
+
                             await self.store.add_payout(
                                 coin_records,
                                 wallet['puzzle_hash'],
                                 total_amount_claimed,
                                 pool_coin_amount,
-                                additions_sub_list,
+                                total_referral_fees,
+                                [dict(v, puzzle_hash=k) for k, v in additions.items()],
                             )
 
                             # Subtract the points from each farmer

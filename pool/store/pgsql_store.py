@@ -318,13 +318,13 @@ class PgsqlPoolStore(AbstractPoolStore):
             )
         )
 
-    async def add_payout(self, coin_records, pool_puzzle_hash, amount, fee, payment_targets) -> int:
+    async def add_payout(self, coin_records, pool_puzzle_hash, amount, fee, referral, payment_targets) -> int:
         rv = await self._execute(
             "INSERT INTO payout "
-            "(datetime, amount, fee) VALUES "
-            "(NOW(),    %s,     %s) "
+            "(datetime, amount, fee, referral) VALUES "
+            "(NOW(),    %s,     %s,  %s) "
             "RETURNING id",
-            (amount, fee),
+            (amount, fee, referral),
         )
         payout_id = rv[0][0]
         for coin_record in coin_records:
@@ -343,9 +343,10 @@ class PgsqlPoolStore(AbstractPoolStore):
                 farmer = 'NULL'
             await self._execute(
                 "INSERT INTO payout_address "
-                "(payout_id, puzzle_hash, pool_puzzle_hash, launcher_id, amount, transaction) VALUES "
-                "(%%s,       %%s,         %%s               , %s,          %%s,    NULL)" % (farmer,),
-                (payout_id, i["puzzle_hash"].hex(), pool_puzzle_hash.hex(), i["amount"]),
+                "(payout_id, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral, referral_amount, transaction) "
+                "VALUES "
+                "(%%s,       %%s,         %%s,              %s,          %%s,    %%s,      %%s,              NULL)" % (farmer,),
+                (payout_id, i["puzzle_hash"].hex(), pool_puzzle_hash.hex(), i["amount"], i.get('referral'), i.get('referral_amount')),
             )
         return payout_id
 
@@ -416,3 +417,17 @@ class PgsqlPoolStore(AbstractPoolStore):
                 sql.append(f'{i} = %s')
                 args.append(attrs[i])
         await self._execute(f"UPDATE globalinfo SET {', '.join(sql)}", args)
+
+    async def get_referrals(self):
+        # TODO: only get launchers id getting paid
+        return {
+            i[1]: {
+                'id': i[0],
+                'target_payout_instructions': i[2],
+            } for i in await self._execute(
+                "SELECT r.id, fl.payout_instructions, fr.payout_instructions "
+                "FROM referral_referral r INNER JOIN farmer fr ON r.referer_id = fr.launcher_id "
+                "INNER JOIN farmer fl ON r.launcher_id = fl.launcher_id "
+                "WHERE active = true"
+            )
+        }
