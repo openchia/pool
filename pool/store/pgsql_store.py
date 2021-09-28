@@ -431,7 +431,7 @@ class PgsqlPoolStore(AbstractPoolStore):
                 'target_payout_instructions': bytes32(bytes.fromhex(i[2])),
             } for i in await self._execute(
                 "SELECT r.id, fl.payout_instructions, fr.payout_instructions "
-                "FROM referral_referral r INNER JOIN farmer fr ON r.referer_id = fr.launcher_id "
+                "FROM referral_referral r INNER JOIN farmer fr ON r.referrer_id = fr.launcher_id "
                 "INNER JOIN farmer fl ON r.launcher_id = fl.launcher_id "
                 "WHERE active = true"
             )
