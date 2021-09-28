@@ -350,7 +350,7 @@ class PgsqlPoolStore(AbstractPoolStore):
             )
             if referral := i.get('referral'):
                 await self._execute(
-                    "UPDATE referral_referral SET total_income += %s WHERE id = %s",
+                    "UPDATE referral_referral SET total_income = total_income + %s WHERE id = %s",
                     (i.get('referral_amount') or 0, referral),
                 )
         return payout_id
