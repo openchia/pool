@@ -639,7 +639,7 @@ class Pool:
                                         # Calculate original value of the share so we can
                                         # divide between pool fee and referral fee
                                         mojos_fee = (D(mojos) / (1 - D(self.pool_fee))) - mojos
-                                        referral_fee = floor(mojos_fee * D(0.5))  # 50% fixed for now
+                                        referral_fee = floor(mojos_fee * D(0.2))  # 20% fixed for now
                                         total_referral_fees += referral_fee
                                         # Subtract the referral fee from the pool fee
                                         pool_coin_amount -= referral_fee
