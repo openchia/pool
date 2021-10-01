@@ -701,50 +701,57 @@ class Pool:
                     continue
 
                 async with wallet['payment_lock']:
-                    payment_targets = await self.store.get_pending_payment_targets(
+                    payment_targets_per_tx = await self.store.get_pending_payment_targets(
                         wallet['puzzle_hash'],
                         self.max_additions_per_transaction,
                     )
-                    if not payment_targets:
+                    if not payment_targets_per_tx:
                         await asyncio.sleep(60)
                         continue
 
-                    self.log.info(f"Submitting a payment: {payment_targets}")
+                    for tx_id, payment_targets in payment_targets_per_tx.items():
 
-                    # TODO(pool): make sure you have enough to pay the blockchain fee, this will be taken out of the pool
-                    # fee itself. Alternatively you can set it to 0 and wait longer
-                    # blockchain_fee = 0.00001 * (10 ** 12) * len(payment_targets)
-                    blockchain_fee: uint64 = uint64(0)
-                    try:
-                        transaction: TransactionRecord = await wallet['rpc_client'].send_transaction_multi(
-                            wallet['id'], payment_targets, fee=blockchain_fee
-                        )
-                    except ValueError as e:
-                        self.log.error(f"Error making payment: {e}")
-                        await asyncio.sleep(10)
-                        continue
+                        self.log.info(f"Submitting a payment: {payment_targets}")
 
-                    self.log.info(f"Transaction: {transaction}")
-                    await self.store.add_transaction(transaction, payment_targets)
+                        if tx_id is None:
+                            # TODO(pool): make sure you have enough to pay the blockchain fee, this will be taken out of the pool
+                            # fee itself. Alternatively you can set it to 0 and wait longer
+                            # blockchain_fee = 0.00001 * (10 ** 12) * len(payment_targets)
+                            blockchain_fee: uint64 = uint64(0)
+                            try:
+                                transaction: TransactionRecord = await wallet['rpc_client'].send_transaction_multi(
+                                    wallet['id'], payment_targets, fee=blockchain_fee
+                                )
+                            except ValueError as e:
+                                self.log.error(f"Error making payment: {e}")
+                                await asyncio.sleep(10)
+                                continue
 
-                    while (
-                        not transaction.confirmed or not (
-                            peak_height - transaction.confirmed_at_height
-                        ) > self.confirmation_security_threshold
-                    ):
-                        transaction = await wallet['rpc_client'].get_transaction(wallet['id'], transaction.name)
-                        peak_height = self.blockchain_state["peak"].height
-                        self.log.info(
-                            f"Waiting for transaction to obtain {self.confirmation_security_threshold} confirmations"
-                        )
-                        if not transaction.confirmed:
-                            self.log.info(f"Not confirmed. In mempool? {transaction.is_in_mempool()}")
+                            self.log.info(f"Transaction: {transaction}")
+                            await self.store.add_transaction(transaction, payment_targets)
                         else:
-                            self.log.info(f"Confirmations: {peak_height - transaction.confirmed_at_height}")
-                        await asyncio.sleep(10)
+                            transaction = await wallet['rpc_client'].get_transaction(
+                                wallet['id'], tx_id
+                            )
 
-                    await self.store.confirm_transaction(transaction)
-                    self.log.info(f"Successfully confirmed payments {payment_targets}")
+                        while (
+                            not transaction.confirmed or not (
+                                peak_height - transaction.confirmed_at_height
+                            ) > self.confirmation_security_threshold
+                        ):
+                            transaction = await wallet['rpc_client'].get_transaction(wallet['id'], transaction.name)
+                            peak_height = self.blockchain_state["peak"].height
+                            self.log.info(
+                                f"Waiting for transaction to obtain {self.confirmation_security_threshold} confirmations"
+                            )
+                            if not transaction.confirmed:
+                                self.log.info(f"Not confirmed. In mempool? {transaction.is_in_mempool()}")
+                            else:
+                                self.log.info(f"Confirmations: {peak_height - transaction.confirmed_at_height}")
+                            await asyncio.sleep(10)
+
+                        await self.store.confirm_transaction(transaction)
+                        self.log.info(f"Successfully confirmed payments {payment_targets}")
 
             except asyncio.CancelledError:
                 self.log.info("Cancelled submit_payment_loop, closing")

@@ -1,3 +1,4 @@
+from collections import defaultdict
 from decimal import Decimal
 import json
 from typing import Optional, Set, List, Tuple, Dict
@@ -366,20 +367,27 @@ class PgsqlPoolStore(AbstractPoolStore):
 
     async def pending_payment_targets_exists(self, pool_puzzle_hash: bytes32):
         return (await self._execute(
-            "SELECT COUNT(*) FROM payout_address WHERE pool_puzzle_hash = %s AND transaction IS NULL",
+            "SELECT COUNT(*) FROM payout_address WHERE pool_puzzle_hash = %s AND confirmed_block_index IS NULL",
             (pool_puzzle_hash.hex(), ),
         ))[0][0] > 0
 
     async def get_pending_payment_targets(self, pool_puzzle_hash: bytes32, limit):
-        return [{
-            "id": i[0],
-            "payout_id": i[1],
-            "puzzle_hash": bytes32(bytes.fromhex(i[2])),
-            "amount": i[3],
-        } for i in await self._execute(
-            "SELECT id, payout_id, puzzle_hash, amount FROM payout_address WHERE pool_puzzle_hash = %s AND transaction IS NULL LIMIT %s",
+        payment_targets_per_tx = defaultdict(list)
+        for i in await self._execute(
+            "SELECT id, transaction, payout_id, puzzle_hash, amount FROM payout_address WHERE pool_puzzle_hash = %s AND confirmed_block_index IS NULL LIMIT %s",
             (pool_puzzle_hash.hex(), limit),
-        )]
+        ):
+            if i[1]:
+                tx_id = bytes32(bytes.fromhex(i[1]))
+            else:
+                tx_id = i[1]
+            payment_targets_per_tx[tx_id].append({
+                "id": i[0],
+                "payout_id": i[2],
+                "puzzle_hash": bytes32(bytes.fromhex(i[3])),
+                "amount": i[4],
+            })
+        return payment_targets_per_tx
 
     async def confirm_transaction(self, transaction):
         await self._execute(
