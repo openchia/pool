@@ -61,6 +61,7 @@ from .singleton import (
 from .store.abstract import AbstractPoolStore
 from .store.pgsql_store import PgsqlPoolStore
 from .record import FarmerRecord
+from .task import task_exception
 from .util import error_dict, RequestMetadata
 from .xchprice import XCHPrice
 
@@ -338,6 +339,7 @@ class Pool:
 
         asyncio.ensure_future(run())
 
+    @task_exception
     async def get_peak_loop(self):
         """
         Periodically contacts the full node to get the latest state of the blockchain
@@ -387,6 +389,7 @@ class Pool:
 
         return (curr.timestamp - past_curr.timestamp) / (curr.height - past_curr.height)
 
+    @task_exception
     async def collect_pool_rewards_loop(self):
         """
         Iterates through the blockchain, looking for pool rewards, and claims them, creating a transaction to the
@@ -530,6 +533,7 @@ class Pool:
                 self.log.error("Unexpected error in collect_pool_rewards_loop", exc_info=True)
                 await asyncio.sleep(5)
 
+    @task_exception
     async def create_payment_loop(self, wallet):
         """
         Calculates the points of each farmer, and splits the total funds received into coins for each farmer.
@@ -681,6 +685,7 @@ class Pool:
                 self.log.error(f"Unexpected error in create_payments_loop: {e}", exc_info=True)
                 await asyncio.sleep(5)
 
+    @task_exception
     async def submit_payment_loop(self, wallet):
         while True:
             try:
@@ -761,6 +766,7 @@ class Pool:
                 self.log.error(f"Unexpected error in submit_payment_loop: {e}", exc_info=True)
                 await asyncio.sleep(60)
 
+    @task_exception
     async def confirm_partials_loop(self):
         """
         Pulls things from the queue of partials one at a time, and adjusts balances.
