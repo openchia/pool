@@ -128,6 +128,8 @@ async def get_singleton_state(
                 saved_state = last_not_none_state
 
         return saved_spend, saved_state, last_not_none_state
+    except LastSpendCoinNotFound:
+        raise
     except Exception as e:
         logger.error(f"Error getting singleton: {e}", exc_info=True)
         return None
