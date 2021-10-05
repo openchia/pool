@@ -15,7 +15,7 @@ from chia.pools.pool_wallet import PoolSingletonState
 from chia.pools.pool_wallet_info import PoolState
 from chia.rpc.full_node_rpc_client import FullNodeRpcClient
 from chia.types.blockchain_format.coin import Coin
-from chia.types.blockchain_format.program import Program, SerializedProgram
+from chia.types.blockchain_format.program import Program
 from chia.types.blockchain_format.sized_bytes import bytes32
 from chia.types.coin_record import CoinRecord
 from chia.types.coin_spend import CoinSpend
@@ -24,8 +24,7 @@ from chia.util.ints import uint32, uint64
 
 from .record import FarmerRecord
 
-log = logging
-log.basicConfig(level=logging.INFO)
+logger = logging.getLogger('singleton')
 
 
 async def get_coin_spend(node_rpc_client: FullNodeRpcClient, coin_record: CoinRecord) -> Optional[CoinSpend]:
@@ -59,10 +58,10 @@ async def get_singleton_state(
         if farmer_record is None:
             launcher_coin: Optional[CoinRecord] = await node_rpc_client.get_coin_record_by_name(launcher_id)
             if launcher_coin is None:
-                log.warning(f"Can not find genesis coin {launcher_id}")
+                logger.warning(f"Can not find genesis coin {launcher_id}")
                 return None
             if not launcher_coin.spent:
-                log.warning(f"Genesis coin {launcher_id} not spent")
+                logger.warning(f"Genesis coin {launcher_id} not spent")
                 return None
 
             last_spend: Optional[CoinSpend] = await get_coin_spend(node_rpc_client, launcher_coin)
@@ -100,7 +99,7 @@ async def get_singleton_state(
                     next_coin_record.coin.puzzle_hash,
                     genesis_challenge,
                 ):
-                    log.warning(f"Invalid singleton puzzle_hash for {launcher_id}")
+                    logger.warning(f"Invalid singleton puzzle_hash for {launcher_id}")
                     return None
                 break
 
@@ -118,7 +117,7 @@ async def get_singleton_state(
 
         return saved_spend, saved_state, last_not_none_state
     except Exception as e:
-        log.error(f"Error getting singleton: {e}")
+        logger.error(f"Error getting singleton: {e}", exc_info=True)
         return None
 
 
@@ -146,14 +145,14 @@ async def create_absorb_transaction(
         node_rpc_client, farmer_record.launcher_id, farmer_record, peak_height, 0, genesis_challenge
     )
     if singleton_state_tuple is None:
-        log.info(f"Invalid singleton {farmer_record.launcher_id}.")
+        logger.info(f"Invalid singleton {farmer_record.launcher_id}.")
         return None
     last_spend, last_state, last_state_2 = singleton_state_tuple
     # Here the buried state is equivalent to the latest state, because we use 0 as the security_threshold
     assert last_state == last_state_2
 
     if last_state.state == PoolSingletonState.SELF_POOLING:
-        log.info(f"Don't try to absorb from former farmer {farmer_record.launcher_id}.")
+        logger.info(f"Don't try to absorb from former farmer {farmer_record.launcher_id}.")
         return None
 
     launcher_coin_record: Optional[CoinRecord] = await node_rpc_client.get_coin_record_by_name(
@@ -166,8 +165,9 @@ async def create_absorb_transaction(
         found_block_index: Optional[uint32] = get_farmed_height(reward_coin_record, genesis_challenge)
         if not found_block_index:
             # The puzzle does not allow spending coins that are not a coinbase reward
-            log.info(f"Received reward {reward_coin_record.coin} that is not a pool reward.")
+            logger.info(f"Received reward {reward_coin_record.coin} that is not a pool reward.")
             continue
+
         absorb_spend: List[CoinSpend] = create_absorb_spend(
             last_spend,
             last_state,
