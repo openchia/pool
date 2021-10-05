@@ -121,6 +121,9 @@ class PgsqlPoolStore(AbstractPoolStore):
             else:
                 where.append(f'{k} {op}')
 
+        if not where:
+            where.append('1 = 1')
+
         fields = ', '.join((FarmerRecord.__annotations__.keys()))
         return {
             i[0]: self._row_to_farmer_record(i)
@@ -155,6 +158,18 @@ class PgsqlPoolStore(AbstractPoolStore):
             "UPDATE farmer SET singleton_tip=%s, singleton_tip_state=%s, is_pool_member=%s WHERE launcher_id=%s",
             entry,
         )
+
+    async def update_farmer(self, launcher_id: bytes32, attributes: List, values: List) -> None:
+        attrs = []
+        farmer_attributes = list(FarmerRecord.__annotations__.keys())
+        for i in attributes:
+            if i not in farmer_attributes:
+                raise RuntimeError(f'{i} is not a valid farmer attribute')
+            attrs.append(f'{i} = %s')
+
+        values = list(values)
+        values.append(launcher_id.hex())
+        await self._execute(f"UPDATE farmer SET {', '.join(attrs)} WHERE launcher_id = %s", values)
 
     async def get_pay_to_singleton_phs(self) -> Set[bytes32]:
         rows = await self._execute("SELECT p2_singleton_puzzle_hash from farmer")
@@ -270,6 +285,19 @@ class PgsqlPoolStore(AbstractPoolStore):
             for launcher_id, timestamp, difficulty in rows
         ]
         return ret
+
+    async def get_launchers_without_recent_partials(self, start_time) -> List[bytes32]:
+        return [
+            bytes32(bytes.fromhex(i[0]))
+            for i in await self._execute(
+                "SELECT DISTINCT p.launcher_id FROM partial p INNER JOIN farmer f "
+                "ON p.launcher_id = f.launcher_id "
+                "WHERE f.is_pool_member = false AND p.launcher_id NOT IN ("
+                " SELECT DISTINCT launcher_id FROM partial WHERE timestamp >= %s "
+                ")",
+                [start_time],
+            )
+        ]
 
     async def add_block(
         self, coin_record: CoinRecord, singleton_coin_record: CoinRecord, farmer: FarmerRecord,

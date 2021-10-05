@@ -219,7 +219,7 @@ class Partials(object):
                 logger.error('Unexpected error in pool_estimated_size_loop', exc_info=True)
             await asyncio.sleep(60 * 30)
 
-    async def missing_partials_loop(self):
+    async def missing_partials_loop(self, launchers_singleton):
         """
         Loop to check for launchers that suddenly stopped sending partials
         """
@@ -262,6 +262,12 @@ class Partials(object):
                                 if last_seen > two_hours_ago:
                                     continue
                         farmer_records[launcher_id] = rec
+
+                        if rec.is_pool_member:
+                            # Check if farmer is still a pool member
+                            await launchers_singleton.add_launcher(
+                                bytes32(bytes.fromhex(launcher_id))
+                            )
                     if farmer_records:
                         logger.debug('%d launchers stopped sending partials.', len(farmer_records))
                         await self.pool.run_hook('missing_partials', farmer_records)

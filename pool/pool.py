@@ -51,6 +51,7 @@ from chia.pools.pool_puzzles import (
 )
 
 from .difficulty_adjustment import get_new_difficulty
+from .launchers import LaunchersSingleton
 from .partials import Partials
 from .singleton import (
     create_absorb_transaction,
@@ -262,8 +263,12 @@ class Pool:
         self.pool_estimated_size_loop_task = asyncio.create_task(
             self.partials.pool_estimated_size_loop()
         )
+        launchers_singleton = LaunchersSingleton(self)
+        self.launchers_singleton_state_task = asyncio.create_task(
+            launchers_singleton.loop()
+        )
         self.missing_partials_loop_task = asyncio.create_task(
-            self.partials.missing_partials_loop()
+            self.partials.missing_partials_loop(launchers_singleton)
         )
         self.xchprice_loop_task = asyncio.create_task(XCHPrice(self.store).loop())
 
@@ -280,6 +285,8 @@ class Pool:
             self.get_peak_loop_task.cancel()
         if self.pool_estimated_size_loop_task is not None:
             self.pool_estimated_size_loop_task.cancel()
+        if self.launchers_singleton_state_task is not None:
+            self.launchers_singleton_state_task.cancel()
         if self.missing_partials_loop_task is not None:
             self.missing_partials_loop_task.cancel()
         if self.xchprice_loop_task is not None:
