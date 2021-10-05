@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 
 from chia.types.blockchain_format.sized_bytes import bytes32
 
@@ -23,7 +24,7 @@ class LaunchersSingleton(object):
     async def loop(self):
 
         for lid in await self.store.get_launchers_without_recent_partials(
-            self.time_target
+            int(time.time() - self.time_target)
         ):
             await self.add_launcher(lid)
 
