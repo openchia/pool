@@ -292,7 +292,7 @@ class PgsqlPoolStore(AbstractPoolStore):
             for i in await self._execute(
                 "SELECT DISTINCT p.launcher_id FROM partial p INNER JOIN farmer f "
                 "ON p.launcher_id = f.launcher_id "
-                "WHERE f.is_pool_member = false AND p.launcher_id NOT IN ("
+                "WHERE f.is_pool_member = true AND p.launcher_id NOT IN ("
                 " SELECT DISTINCT launcher_id FROM partial WHERE timestamp >= %s "
                 ")",
                 [start_time],
