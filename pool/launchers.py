@@ -52,3 +52,6 @@ class LaunchersSingleton(object):
             except Exception as e:
                 logger.error(f"Unexpected error in launchers loop: {e}", exc_info=True)
                 await asyncio.sleep(5)
+
+            # Sleep 3s between every check to not potentially overload the node
+            await asyncio.sleep(3)
