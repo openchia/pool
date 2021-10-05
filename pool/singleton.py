@@ -79,7 +79,11 @@ async def get_singleton_state(
         assert last_spend is not None
 
         last_coin_record: Optional[CoinRecord] = await node_rpc_client.get_coin_record_by_name(last_spend.coin.name())
-        assert last_coin_record is not None
+        if last_coin_record is None:
+            logger.info('Last spend coin record for %s is None', launcher_id.hex())
+            if last_not_none_state:
+                logger.info('Last pool url %s', last_not_none_state.pool_url)
+            return None
 
         while True:
             # Get next coin solution
