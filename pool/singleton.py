@@ -27,6 +27,11 @@ from .record import FarmerRecord
 logger = logging.getLogger('singleton')
 
 
+class LastSpendCoinNotFound(Exception):
+    def __init__(self, last_not_none_state):
+        self.last_not_none_state = last_not_none_state
+
+
 async def get_coin_spend(node_rpc_client: FullNodeRpcClient, coin_record: CoinRecord) -> Optional[CoinSpend]:
     if not coin_record.spent:
         return None
@@ -53,6 +58,7 @@ async def get_singleton_state(
     peak_height: uint32,
     confirmation_security_threshold: int,
     genesis_challenge: bytes32,
+    raise_exc=False,
 ) -> Optional[Tuple[CoinSpend, PoolState, PoolState]]:
     try:
         if farmer_record is None:
@@ -80,6 +86,8 @@ async def get_singleton_state(
 
         last_coin_record: Optional[CoinRecord] = await node_rpc_client.get_coin_record_by_name(last_spend.coin.name())
         if last_coin_record is None:
+            if raise_exc:
+                raise LastSpendCoinNotFound(last_not_none_state)
             logger.info('Last spend coin record for %s is None', launcher_id.hex())
             if last_not_none_state:
                 logger.info('Last pool url %s', last_not_none_state.pool_url)

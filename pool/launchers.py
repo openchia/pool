@@ -4,6 +4,7 @@ import time
 
 from chia.types.blockchain_format.sized_bytes import bytes32
 
+from .singleton import LastSpendCoinNotFound
 from .task import task_exception
 
 logger = logging.getLogger('launchers')
@@ -32,13 +33,22 @@ class LaunchersSingleton(object):
             try:
                 launcher_id: bytes32 = await self.pending_launchers.get()
 
-                singleton_state_tuple = await self.pool.get_and_validate_singleton_state(
-                    launcher_id
-                )
-                if singleton_state_tuple is None:
-                    continue
+                try:
+                    singleton_state_tuple = await self.pool.get_and_validate_singleton_state(
+                        launcher_id, raise_exc=True,
+                    )
+                except LastSpendCoinNotFound as e:
+                    is_member = False
+                    for wallet in self.pool.wallets:
+                        if wallet['puzzle_hash'] == e.last_not_none_state.target_puzzle_hash:
+                            is_member = True
+                            break
+                else:
+                    if singleton_state_tuple is None:
+                        continue
 
-                is_member = singleton_state_tuple[2]
+                    is_member = singleton_state_tuple[2]
+
                 if not is_member:
                     logger.info('Launcher %s is no longer a pool member', launcher_id.hex())
                     await self.pool.partials.remove_launcher(launcher_id)

@@ -1034,7 +1034,7 @@ class Pool:
         return response_dict
 
     async def get_and_validate_singleton_state(
-        self, launcher_id: bytes32
+        self, launcher_id: bytes32, raise_exc=False,
     ) -> Optional[Tuple[CoinSpend, PoolState, bool]]:
         """
         :return: the state of the singleton, if it currently exists in the blockchain, and if it is assigned to
@@ -1054,6 +1054,7 @@ class Pool:
                     self.blockchain_state["peak"].height,
                     self.confirmation_security_threshold,
                     self.constants.GENESIS_CHALLENGE,
+                    raise_exc=raise_exc,
                 )
             )
             self.follow_singleton_tasks[launcher_id] = singleton_task
