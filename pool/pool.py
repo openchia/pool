@@ -354,20 +354,29 @@ class Pool:
         while True:
             try:
                 self.blockchain_state = await self.node_rpc_client.get_blockchain_state()
-                asyncio.create_task(self.store.set_globalinfo({
-                    'blockchain_height': self.blockchain_state['peak'].height,
-                    'blockchain_space': self.blockchain_state['space'],
-                    'blockchain_avg_block_time': await self.get_average_block_time(),
-                }))
 
                 # Get the wallets as last since its not absolutely critical for pool operation
                 for wallet in self.wallets:
                     try:
                         wallet['synced'] = await wallet['rpc_client'].get_synced()
+                        wallet['balance'] = await wallet['rpc_client'].get_wallet_balance(
+                            str(wallet['id'])
+                        )
                     except aiohttp.client_exceptions.ClientConnectorError as e:
                         self.log.error(
                             'Failed to connect to wallet %s: %s', wallet['fingerprint'], e
                         )
+
+                asyncio.create_task(self.store.set_globalinfo({
+                    'blockchain_height': self.blockchain_state['peak'].height,
+                    'blockchain_space': self.blockchain_state['space'],
+                    'blockchain_avg_block_time': await self.get_average_block_time(),
+                    'wallets': json.dumps([
+                        {'address': i['address'], 'balance': i['balance'], 'synced': i['synced']}
+                        for i in self.wallets
+                    ]),
+                }))
+
                 await asyncio.sleep(30)
             except asyncio.CancelledError:
                 self.log.info("Cancelled get_peak_loop, closing")

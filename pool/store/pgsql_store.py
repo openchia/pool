@@ -453,6 +453,7 @@ class PgsqlPoolStore(AbstractPoolStore):
             'blockchain_height',
             'blockchain_space',
             'blockchain_avg_block_time',
+            'wallets',
         ):
             if i in attrs:
                 sql.append(f'{i} = %s')
