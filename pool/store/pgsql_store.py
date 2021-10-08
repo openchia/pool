@@ -63,13 +63,13 @@ class PgsqlPoolStore(AbstractPoolStore):
     async def add_farmer_record(self, farmer_record: FarmerRecord, metadata: RequestMetadata):
         async with self.pool.acquire() as conn:
             async with conn.cursor() as cursor:
-                await cursor.execute("SELECT launcher_id FROM farmer WHERE launcher_id = %s", (farmer_record.launcher_id.hex(),))
+                await cursor.execute("SELECT launcher_id, is_pool_member FROM farmer WHERE launcher_id = %s", (farmer_record.launcher_id.hex(),))
                 exists = await cursor.fetchone()
                 if not exists:
                     await cursor.execute(
                         "INSERT INTO farmer ("
-                        "launcher_id, p2_singleton_puzzle_hash, delay_time, delay_puzzle_hash, authentication_public_key, singleton_tip, singleton_tip_state, points, difficulty, payout_instructions, is_pool_member, estimated_size, points_pplns, share_pplns, joined_at) VALUES ("
-                        "%s,          %s,                       %s,         %s,                %s,                        %s,            %s,                  0,      %s,         %s,                  %s,             0,              0,            0,           NOW())",
+                        "launcher_id, p2_singleton_puzzle_hash, delay_time, delay_puzzle_hash, authentication_public_key, singleton_tip, singleton_tip_state, points, difficulty, payout_instructions, is_pool_member, estimated_size, points_pplns, share_pplns, joined_at, left_at) VALUES ("
+                        "%s,          %s,                       %s,         %s,                %s,                        %s,            %s,                  0,      %s,         %s,                  %s,             0,              0,            0,           NOW(),     NULL)",
                         (
                             farmer_record.launcher_id.hex(),
                             farmer_record.p2_singleton_puzzle_hash.hex(),
@@ -83,8 +83,13 @@ class PgsqlPoolStore(AbstractPoolStore):
                             bool(farmer_record.is_pool_member),
                         ),
                     )
+                else:
+                    if exists[1] and not farmer_record.is_pool_member:
+                        left_at = ', left_at = NOW()'
+                    else:
+                        left_at = ''
                     await cursor.execute(
-                        "UPDATE farmer SET p2_singleton_puzzle_hash = %s, delay_time = %s, delay_puzzle_hash = %s, authentication_public_key = %s, singleton_tip = %s, singleton_tip_state = %s, difficulty = %s, payout_instructions = %s, is_pool_member = %s WHERE launcher_id = %s",
+                        f"UPDATE farmer SET p2_singleton_puzzle_hash = %s, delay_time = %s, delay_puzzle_hash = %s, authentication_public_key = %s, singleton_tip = %s, singleton_tip_state = %s, difficulty = %s, payout_instructions = %s, is_pool_member = %s{left_at} WHERE launcher_id = %s",
                         (
                             farmer_record.p2_singleton_puzzle_hash.hex(),
                             farmer_record.delay_time,
@@ -145,18 +150,24 @@ class PgsqlPoolStore(AbstractPoolStore):
 
     async def update_singleton(
         self,
-        launcher_id: bytes32,
+        farmer_record: FarmerRecord,
         singleton_tip: CoinSpend,
         singleton_tip_state: PoolState,
         is_pool_member: bool,
     ):
-        if is_pool_member:
-            entry = (bytes(singleton_tip), bytes(singleton_tip_state), True, launcher_id.hex())
+
+        if farmer_record.is_pool_member and not is_pool_member:
+            left_at = ', left_at = NOW()'
         else:
-            entry = (bytes(singleton_tip), bytes(singleton_tip_state), False, launcher_id.hex())
+            left_at = ''
         await self._execute(
-            "UPDATE farmer SET singleton_tip=%s, singleton_tip_state=%s, is_pool_member=%s WHERE launcher_id=%s",
-            entry,
+            f'UPDATE farmer SET singleton_tip=%s, singleton_tip_state=%s, is_pool_member=%s{left_at} WHERE launcher_id=%s',
+            (
+                bytes(singleton_tip),
+                bytes(singleton_tip_state),
+                is_pool_member,
+                farmer_record.launcher_id.hex(),
+            ),
         )
 
     async def update_farmer(self, launcher_id: bytes32, attributes: List, values: List) -> None:

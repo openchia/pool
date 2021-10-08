@@ -1119,7 +1119,7 @@ class Pool:
             # switch back.
             self.log.info(f"Updating singleton state for {launcher_id}")
             await self.store.update_singleton(
-                launcher_id, buried_singleton_tip, buried_singleton_tip_state, is_pool_member
+                farmer_rec, buried_singleton_tip, buried_singleton_tip_state, is_pool_member
             )
 
         return buried_singleton_tip, buried_singleton_tip_state, is_pool_member
