@@ -183,7 +183,11 @@ class PgsqlPoolStore(AbstractPoolStore):
         await self._execute(f"UPDATE farmer SET {', '.join(attrs)} WHERE launcher_id = %s", values)
 
     async def get_pay_to_singleton_phs(self) -> Set[bytes32]:
-        rows = await self._execute("SELECT p2_singleton_puzzle_hash from farmer")
+        rows = await self._execute(
+            "SELECT p2_singleton_puzzle_hash FROM farmer WHERE is_pool_member = true OR ("
+            " is_pool_member = false AND left_at >= NOW() - interval '6 hours'"
+            ")"
+        )
 
         all_phs: Set[bytes32] = set()
         for row in rows:
