@@ -902,8 +902,7 @@ class Pool:
                         f"{farmer_record.points + points_received}"
                     )
         except Exception as e:
-            error_stack = traceback.format_exc()
-            self.log.error(f"Exception in confirming partial: {e} {error_stack}")
+            self.log.error('Exception in confirming partial', exc_info=True)
 
     async def add_farmer(self, request: PostFarmerRequest, metadata: RequestMetadata) -> Dict:
         async with self.store.lock:
