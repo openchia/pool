@@ -86,6 +86,8 @@ class PgsqlPoolStore(AbstractPoolStore):
                 else:
                     if exists[1] and not farmer_record.is_pool_member:
                         left_at = ', left_at = NOW()'
+                    if not exists[1] and farmer_record.is_pool_member:
+                        left_at = ', left_at = NULL'
                     else:
                         left_at = ''
                     await cursor.execute(
@@ -158,6 +160,8 @@ class PgsqlPoolStore(AbstractPoolStore):
 
         if farmer_record.is_pool_member and not is_pool_member:
             left_at = ', left_at = NOW()'
+        elif not farmer_record.is_pool_member and is_pool_member:
+            left_at = ', left_at = NULL'
         else:
             left_at = ''
         await self._execute(
@@ -183,6 +187,10 @@ class PgsqlPoolStore(AbstractPoolStore):
         await self._execute(f"UPDATE farmer SET {', '.join(attrs)} WHERE launcher_id = %s", values)
 
     async def get_pay_to_singleton_phs(self) -> Set[bytes32]:
+        """
+        Only get farmers that are still members or that have left in less than 6 hours.
+        6 hours is arbitrary, in theory we could be as low as 10 minutes.
+        """
         rows = await self._execute(
             "SELECT p2_singleton_puzzle_hash FROM farmer WHERE is_pool_member = true OR ("
             " is_pool_member = false AND left_at >= NOW() - interval '6 hours'"
