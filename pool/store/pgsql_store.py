@@ -1,6 +1,7 @@
 from collections import defaultdict
 from decimal import Decimal
 import json
+import math
 from typing import Optional, Set, List, Tuple, Dict
 
 import aiopg
@@ -370,13 +371,16 @@ class PgsqlPoolStore(AbstractPoolStore):
             )
         )
 
-    async def add_payout(self, coin_records, pool_puzzle_hash, amount, fee, referral, payment_targets) -> int:
+    async def add_payout(self, coin_records, pool_puzzle_hash, fee_puzzle_hash, amount, pool_fee, referral, payment_targets) -> int:
+
+        assert len(payment_targets) > 0
+
         rv = await self._execute(
             "INSERT INTO payout "
             "(datetime, amount, fee, referral) VALUES "
             "(NOW(),    %s,     %s,  %s) "
             "RETURNING id",
-            (amount, fee, referral),
+            (amount, pool_fee, referral),
         )
         payout_id = rv[0][0]
         for coin_record in coin_records:
@@ -384,7 +388,26 @@ class PgsqlPoolStore(AbstractPoolStore):
                 "UPDATE block SET payout_id = %s WHERE singleton = %s",
                 (payout_id, coin_record.coin.parent_coin_info.hex()),
             )
-        for i in payment_targets:
+
+        max_additions = self.pool_config["max_additions_per_transaction"]
+        rounds = math.ceil(len(payment_targets) / max_additions)
+
+        # We can lose one mojo here due to rounding, but not important
+        pool_fee_per_round = int(pool_fee / rounds)
+
+        payout_round = 1
+        for idx, i in enumerate(payment_targets):
+
+            if idx % max_additions == 0:
+                payout_round += 1
+                await self._execute(
+                    "INSERT INTO payout_address "
+                    "(payout_id, payout_round, fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction) "
+                    "VALUES "
+                    "(%s,        %s,           true, %s,         %s,               NULL,        %s,     NULL,        0,               NULL)",
+                    (payout_id, payout_round, fee_puzzle_hash.hex(), pool_puzzle_hash.hex(), pool_fee_per_round),
+                )
+
             rv = await self._execute(
                 "SELECT launcher_id FROM farmer WHERE payout_instructions = %s",
                 (i["puzzle_hash"].hex(),),
@@ -395,10 +418,10 @@ class PgsqlPoolStore(AbstractPoolStore):
                 farmer = 'NULL'
             await self._execute(
                 "INSERT INTO payout_address "
-                "(payout_id, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction) "
+                "(payout_id, payout_round, fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction) "
                 "VALUES "
-                "(%%s,       %%s,         %%s,              %s,          %%s,    %%s,         %%s,              NULL)" % (farmer,),
-                (payout_id, i["puzzle_hash"].hex(), pool_puzzle_hash.hex(), i["amount"], i.get('referral'), i.get('referral_amount') or 0),
+                "(%%s,       %%s,          false, %%s,       %%s,              %s,          %%s,    %%s,         %%s,              NULL)" % (farmer,),
+                (payout_id, payout_round, i["puzzle_hash"].hex(), pool_puzzle_hash.hex(), i["amount"], i.get('referral'), i.get('referral_amount') or 0),
             )
             if referral := i.get('referral'):
                 await self._execute(
@@ -422,12 +445,19 @@ class PgsqlPoolStore(AbstractPoolStore):
             (pool_puzzle_hash.hex(), ),
         ))[0][0] > 0
 
-    async def get_pending_payment_targets(self, pool_puzzle_hash: bytes32, limit):
+    async def get_pending_payment_targets(self, pool_puzzle_hash: bytes32):
         payment_targets_per_tx = defaultdict(list)
+        payout_round = None
         for i in await self._execute(
-            "SELECT id, transaction, payout_id, puzzle_hash, amount FROM payout_address WHERE pool_puzzle_hash = %s AND confirmed_block_index IS NULL LIMIT %s",
-            (pool_puzzle_hash.hex(), limit),
+            "SELECT id, transaction, payout_id, puzzle_hash, amount, payout_round, fee FROM payout_address WHERE pool_puzzle_hash = %s AND confirmed_block_index IS NULL ORDER BY payout_round ASC, fee DESC, id ASC" ,
+            (pool_puzzle_hash.hex(), ),
         ):
+            # Only get payout addresses for the same round
+            if payout_round is None:
+                payout_round = i[5]
+            elif payout_round != i[5]:
+                break
+
             if i[1]:
                 tx_id = bytes32(bytes.fromhex(i[1]))
             else:
@@ -437,14 +467,21 @@ class PgsqlPoolStore(AbstractPoolStore):
                 "payout_id": i[2],
                 "puzzle_hash": bytes32(bytes.fromhex(i[3])),
                 "amount": i[4],
+                "fee": i[6],
             })
         return payment_targets_per_tx
 
-    async def confirm_transaction(self, transaction):
+    async def confirm_transaction(self, transaction, fee_payment_target):
         await self._execute(
             "UPDATE payout_address SET confirmed_block_index = %s WHERE transaction = %s",
             (int(transaction.confirmed_at_height), transaction.name.hex()),
         )
+        if int(transaction.fee_amount) > 0:
+            # Subtract the transaction fee from pool fee
+            await self._execute(
+                "UPDATE payout_address SET amount = amount - %s WHERE id = %s",
+                (int(transaction.fee_amount), fee_payment_target['id']),
+            )
 
     async def get_last_block_singletons(self) -> List[str]:
         return [

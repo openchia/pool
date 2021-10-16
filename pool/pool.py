@@ -7,7 +7,6 @@ import os
 import pathlib
 import subprocess
 import time
-import traceback
 from asyncio import Task
 from decimal import Decimal as D
 from math import floor
@@ -140,6 +139,8 @@ class Pool:
         # The pool fees will be sent to this address. This MUST be on a different key than the target_puzzle_hash,
         # otherwise, the fees will be sent to the users. Using 690783650
         self.pool_fee_puzzle_hash: bytes32 = bytes32(decode_puzzle_hash(pool_config["pool_fee_address"]))
+
+        self.transaction_fee = uint64(pool_config.get('transaction_fee') or 0)
 
         # We need to check for slow farmers. If farmers cannot submit proofs in time, they won't be able to win
         # any rewards either. This number can be tweaked to be more or less strict. More strict ensures everyone
@@ -640,7 +641,7 @@ class Pool:
                             total_points = sum([pt for (pt, ph) in points_and_ph])
 
                         total_referral_fees = 0
-                        if total_points > 0:
+                        if points_and_ph and total_points > 0:
                             mojo_per_point = D(amount_to_distribute) / D(total_points)
                             self.log.info(f"Paying out {mojo_per_point} mojo / point")
 
@@ -674,12 +675,10 @@ class Pool:
                                         additions[ph]['referral'] = referral['id']
                                         additions[ph]['referral_amount'] = referral_fee
 
-                            # Add pool fee
-                            additions[self.pool_fee_puzzle_hash] = {'amount': pool_coin_amount}
-
                             await self.store.add_payout(
                                 coin_records,
                                 wallet['puzzle_hash'],
+                                self.pool_fee_puzzle_hash,
                                 total_amount_claimed,
                                 pool_coin_amount,
                                 total_referral_fees,
@@ -724,7 +723,6 @@ class Pool:
                 async with wallet['payment_lock']:
                     payment_targets_per_tx = await self.store.get_pending_payment_targets(
                         wallet['puzzle_hash'],
-                        self.max_additions_per_transaction,
                     )
                     if not payment_targets_per_tx:
                         await asyncio.sleep(60)
@@ -732,13 +730,23 @@ class Pool:
 
                     for tx_id, payment_targets in payment_targets_per_tx.items():
 
+                        # First address should always the pool fee address
+                        if not payment_targets[0]['fee']:
+                            self.log.warning('First payment address is not pool fee, aborting.')
+                            await asyncio.sleep(60)
+                            break
+
                         self.log.info(f"Submitting a payment: {payment_targets}")
 
                         if tx_id is None:
-                            # TODO(pool): make sure you have enough to pay the blockchain fee, this will be taken out of the pool
-                            # fee itself. Alternatively you can set it to 0 and wait longer
-                            # blockchain_fee = 0.00001 * (10 ** 12) * len(payment_targets)
-                            blockchain_fee: uint64 = uint64(0)
+                            blockchain_fee: uint64 = self.transaction_fee
+                            if int(blockchain_fee) > payment_targets[0]['amount']:
+                                self.log.error('Transaction fee cannot be higher than pool fee.')
+                                await asyncio.sleep(60)
+                                break
+                            else:
+                                # Subtract the transaction fee from pool fee
+                                payment_targets[0]['amount'] -= int(blockchain_fee)
                             try:
                                 transaction: TransactionRecord = await wallet['rpc_client'].send_transaction_multi(
                                     wallet['id'], payment_targets, fee=blockchain_fee
@@ -771,7 +779,7 @@ class Pool:
                                 self.log.info(f"Confirmations: {peak_height - transaction.confirmed_at_height}")
                             await asyncio.sleep(10)
 
-                        await self.store.confirm_transaction(transaction)
+                        await self.store.confirm_transaction(transaction, payment_targets[0])
                         self.log.info(f"Successfully confirmed payments {payment_targets}")
 
             except asyncio.CancelledError:
@@ -901,7 +909,7 @@ class Pool:
                         f"Farmer {farmer_record.launcher_id} updated points to: "
                         f"{farmer_record.points + points_received}"
                     )
-        except Exception as e:
+        except Exception:
             self.log.error('Exception in confirming partial', exc_info=True)
 
     async def add_farmer(self, request: PostFarmerRequest, metadata: RequestMetadata) -> Dict:

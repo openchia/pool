@@ -316,6 +316,7 @@ class Partials(object):
         points_and_ph = []
         await self.scrub()
         async with self.cache:
+            total_points = self.cache.all.points
             for launcher_id, points_interval in self.cache.items():
                 if points_interval.points == 0:
                     continue
@@ -325,6 +326,7 @@ class Partials(object):
                         'Did not find payout instructions for %r, points %d.',
                         launcher_id, points_interval.points,
                     )
+                    total_points -= points_interval.points
                     continue
                 points_and_ph.append((uint64(points_interval.points), ph))
         return points_and_ph, self.cache.all.points
