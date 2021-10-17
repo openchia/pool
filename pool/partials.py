@@ -265,9 +265,7 @@ class Partials(object):
 
                         if rec.is_pool_member:
                             # Check if farmer is still a pool member
-                            await launchers_singleton.add_launcher(
-                                bytes32(bytes.fromhex(launcher_id))
-                            )
+                            await launchers_singleton.add_launcher(rec.launcher_id)
                     if farmer_records:
                         logger.debug('%d launchers stopped sending partials.', len(farmer_records))
                         await self.pool.run_hook('missing_partials', farmer_records)
