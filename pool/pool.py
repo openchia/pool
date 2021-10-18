@@ -463,6 +463,11 @@ class Pool:
                             claimable_amounts += ph_to_amounts[rec.p2_singleton_puzzle_hash]
                         else:
                             not_claimable_amounts += ph_to_amounts[rec.p2_singleton_puzzle_hash]
+                            self.log.info(
+                                "Not claimable from %s: %s",
+                                rec.launcher_id.hex(),
+                                ph_to_amounts[rec.p2_singleton_puzzle_hash] / (10**12),
+                            )
 
                     if len(coin_records) > 0:
                         self.log.info(f"Claimable amount: {claimable_amounts / (10**12)}")
