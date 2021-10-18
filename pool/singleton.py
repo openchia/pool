@@ -1,8 +1,10 @@
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 import logging
 
 from blspy import G2Element
+
 from chia.consensus.coinbase import pool_parent_id
+from chia.consensus.constants import ConsensusConstants
 from chia.pools.pool_puzzles import (
     create_absorb_spend,
     solution_to_extra_data,
@@ -22,6 +24,7 @@ from chia.types.coin_spend import CoinSpend
 from chia.types.spend_bundle import SpendBundle
 from chia.util.ints import uint32, uint64
 
+from .absorb_spend import spend_with_fee
 from .record import FarmerRecord
 
 logger = logging.getLogger('singleton')
@@ -150,13 +153,15 @@ def get_farmed_height(reward_coin_record: CoinRecord, genesis_challenge: bytes32
 
 async def create_absorb_transaction(
     node_rpc_client: FullNodeRpcClient,
+    wallets: List[Dict],
     farmer_record: FarmerRecord,
     peak_height: uint32,
     reward_coin_records: List[CoinRecord],
-    genesis_challenge: bytes32,
+    fee: uint64,
+    constants: ConsensusConstants,
 ) -> Optional[SpendBundle]:
     singleton_state_tuple: Optional[Tuple[CoinSpend, PoolState, PoolState]] = await get_singleton_state(
-        node_rpc_client, farmer_record.launcher_id, farmer_record, peak_height, 0, genesis_challenge
+        node_rpc_client, farmer_record.launcher_id, farmer_record, peak_height, 0, constants.GENESIS_CHALLENGE
     )
     if singleton_state_tuple is None:
         logger.info(f"Invalid singleton {farmer_record.launcher_id}.")
@@ -176,7 +181,7 @@ async def create_absorb_transaction(
 
     all_spends: List[CoinSpend] = []
     for reward_coin_record in reward_coin_records:
-        found_block_index: Optional[uint32] = get_farmed_height(reward_coin_record, genesis_challenge)
+        found_block_index: Optional[uint32] = get_farmed_height(reward_coin_record, constants.GENESIS_CHALLENGE)
         if not found_block_index:
             # The puzzle does not allow spending coins that are not a coinbase reward
             logger.info(f"Received reward {reward_coin_record.coin} that is not a pool reward.")
@@ -187,22 +192,20 @@ async def create_absorb_transaction(
             last_state,
             launcher_coin_record.coin,
             found_block_index,
-            genesis_challenge,
+            constants.GENESIS_CHALLENGE,
             farmer_record.delay_time,
             farmer_record.delay_puzzle_hash,
         )
         last_spend = absorb_spend[0]
         all_spends += absorb_spend
-        # TODO(pool): handle the case where the cost exceeds the size of the block
-        # TODO(pool): If you want to add a fee, you should do the following:
-        #  - only absorb one reward at a time
-        #  - spend the coin that you are receiving in the same spend bundle that it is created
-        #  - create an output with slightly less XCH, to yourself. for example, 1.7499 XCH
-        #  - The remaining value will automatically be used as a fee
 
     if len(all_spends) == 0:
         return None
-    return SpendBundle(all_spends, G2Element())
+
+    if fee > 0:
+        return await spend_with_fee(node_rpc_client, wallets, all_spends, fee, constants)
+    else:
+        return SpendBundle(all_spends, G2Element())
 
 
 async def find_singleton_from_coin(

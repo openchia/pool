@@ -483,6 +483,12 @@ class PgsqlPoolStore(AbstractPoolStore):
                 (int(transaction.fee_amount), fee_payment_target['id']),
             )
 
+    async def remove_transaction(self, tx_id: bytes32):
+        await self._execute(
+            "UPDATE payout_address SET transaction = NULL WHERE transaction = %s",
+            (tx_id.hex(), ),
+        )
+
     async def get_last_block_singletons(self) -> List[str]:
         return [
             i[0] for i in

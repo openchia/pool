@@ -511,10 +511,12 @@ class Pool:
 
                         spend_bundle = await create_absorb_transaction(
                             self.node_rpc_client,
+                            self.wallets,
                             rec,
                             self.blockchain_state["peak"].height,
                             coins_to_absorb,
-                            self.constants.GENESIS_CHALLENGE,
+                            self.transaction_fee,
+                            self.constants,
                         )
 
                         if spend_bundle is None:
@@ -587,7 +589,22 @@ class Pool:
                     total_amount_claimed = 0
                     async with self.collect_and_payment_lock:
                         for c in list(coin_records):
+
+                            real_coin = c
                             if c.coin.parent_coin_info.hex() not in last_singletons:
+
+                                # Check if its a double spend to absorb with a fee
+                                parent_coin_record: Optional[CoinRecord] = (
+                                    await self.node_rpc_client.get_coin_record_by_name(
+                                        c.coin.parent_coin_info,
+                                    )
+                                )
+                                # The parent coin would have same puzzle hash of the wallet
+                                if parent_coin_record and parent_coin_record.spent and parent_coin_record.coin.puzzle_hash == wallet['puzzle_hash']:
+                                    c = parent_coin_record
+
+                            if c.coin.parent_coin_info.hex() not in last_singletons:
+
                                 result = None
                                 try:
                                     result = await find_singleton_from_coin(
@@ -609,13 +626,13 @@ class Pool:
                                         (absorb_coin, singleton_coin, farmer)
                                     ])
                                 else:
-                                    coin_records.remove(c)
+                                    coin_records.remove(real_coin)
                                     self.log.info(
                                         "Coin %s not in singleton, skipping", c.coin.amount / (10 ** 12)
                                     )
                                     continue
 
-                            total_amount_claimed += c.coin.amount
+                            total_amount_claimed += real_coin.coin.amount
 
                     if len(coin_records) == 0:
                         self.log.info("No funds to distribute (wallet %s).", wallet['fingerprint'])
@@ -624,11 +641,6 @@ class Pool:
 
                     pool_coin_amount = int(total_amount_claimed * self.pool_fee)
                     amount_to_distribute = total_amount_claimed - pool_coin_amount
-
-                    if total_amount_claimed < calculate_pool_reward(uint32(1)):  # 1.75 XCH
-                        self.log.info(f"Do not have enough funds to distribute: {total_amount_claimed}, skipping payout")
-                        await asyncio.sleep(self.payment_interval)
-                        continue
 
                     self.log.info(f"Total amount claimed: {total_amount_claimed / (10 ** 12)}")
                     self.log.info(f"Pool coin amount (includes blockchain fee) {pool_coin_amount  / (10 ** 12)}")
@@ -743,6 +755,16 @@ class Pool:
 
                         self.log.info(f"Submitting a payment: {payment_targets}")
 
+                        if tx_id:
+                            try:
+                                transaction = await wallet['rpc_client'].get_transaction(
+                                    wallet['id'], tx_id
+                                )
+                            except ValueError as e:
+                                if 'not found' in str(e):
+                                    await self.store.remove_transaction(tx_id)
+                                    tx_id = None
+
                         if tx_id is None:
                             blockchain_fee: uint64 = self.transaction_fee
                             if int(blockchain_fee) > payment_targets[0]['amount']:
@@ -763,10 +785,6 @@ class Pool:
 
                             self.log.info(f"Transaction: {transaction}")
                             await self.store.add_transaction(transaction, payment_targets)
-                        else:
-                            transaction = await wallet['rpc_client'].get_transaction(
-                                wallet['id'], tx_id
-                            )
 
                         while (
                             not transaction.confirmed or not (
