@@ -324,8 +324,10 @@ class PgsqlPoolStore(AbstractPoolStore):
         ]
 
     async def add_block(
-        self, coin_record: CoinRecord, singleton_coin_record: CoinRecord, farmer: FarmerRecord,
-        pool_space: int, estimate_to_win: int,
+        self, coin_record: CoinRecord, absorb_fee: int, singleton_coin_record: CoinRecord,
+        farmer: FarmerRecord,
+        pool_space: int,
+        estimate_to_win: int,
     ) -> None:
         last_block = await self._execute(
             "SELECT estimate_to_win, timestamp FROM block ORDER BY -confirmed_block_index LIMIT 1"
@@ -352,9 +354,9 @@ class PgsqlPoolStore(AbstractPoolStore):
 
         await self._execute(
             "INSERT INTO block ("
-            " name, singleton, timestamp, farmed_height, confirmed_block_index, puzzle_hash, amount, farmed_by_id, estimate_to_win, pool_space, luck"
+            " name, singleton, timestamp, farmed_height, confirmed_block_index, puzzle_hash, amount, farmed_by_id, estimate_to_win, pool_space, luck, absorb_fee"
             ") VALUES ("
-            " %s,   %s,        %s,        %s,            %s,                    %s,          %s,     %s,           %s             , %s,         %s"
+            " %s,   %s,        %s,        %s,            %s,                    %s,          %s,     %s,           %s,              %s,         %s,   %s"
             ")",
             (
                 coin_record.name.hex(),
@@ -368,6 +370,7 @@ class PgsqlPoolStore(AbstractPoolStore):
                 estimate_to_win,
                 pool_space,
                 luck,
+                absorb_fee,
             )
         )
 
@@ -449,7 +452,7 @@ class PgsqlPoolStore(AbstractPoolStore):
         payment_targets_per_tx = defaultdict(list)
         payout_round = None
         for i in await self._execute(
-            "SELECT id, transaction, payout_id, puzzle_hash, amount, payout_round, fee FROM payout_address WHERE pool_puzzle_hash = %s AND confirmed_block_index IS NULL ORDER BY payout_round ASC, fee DESC, id ASC" ,
+            "SELECT id, transaction, payout_id, puzzle_hash, amount, payout_round, fee FROM payout_address WHERE pool_puzzle_hash = %s AND confirmed_block_index IS NULL ORDER BY payout_round ASC, fee DESC, id ASC",
             (pool_puzzle_hash.hex(), ),
         ):
             # Only get payout addresses for the same round

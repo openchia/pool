@@ -13,7 +13,6 @@ from math import floor
 from typing import Dict, Optional, Set, List, Tuple, Callable
 
 from blspy import AugSchemeMPL, G1Element
-from chia.consensus.block_rewards import calculate_pool_reward
 from chia.pools.pool_wallet_info import PoolState, PoolSingletonState
 from chia.protocols.pool_protocol import (
     PoolErrorCode,
@@ -539,7 +538,7 @@ class Pool:
                             pool_size, etw = await self.partials.get_pool_size_and_etw()
                             for coin, singleton_coin, rec in absorbeb_coins:
                                 await self.store.add_block(
-                                    coin, singleton_coin, rec, pool_size, etw,
+                                    coin, self.transaction_fee, singleton_coin, rec, pool_size, etw,
                                 )
                     except Exception:
                         self.log.error(
@@ -619,8 +618,9 @@ class Pool:
                                     self.log.info('Coin %r was not absorbeb by us', c.coin)
                                     absorb_coin, singleton_coin, farmer = result
                                     pool_size, etw = await self.partials.get_pool_size_and_etw()
+                                    # We didnt absorb it, fee should be 0
                                     await self.store.add_block(
-                                        absorb_coin, singleton_coin, farmer, pool_size, etw,
+                                        absorb_coin, 0, singleton_coin, farmer, pool_size, etw,
                                     )
                                     await self.run_hook('absorb', [
                                         (absorb_coin, singleton_coin, farmer)
