@@ -8,6 +8,7 @@ import pathlib
 import subprocess
 import time
 from asyncio import Task
+from collections import defaultdict
 from decimal import Decimal as D
 from math import floor
 from typing import Dict, Optional, Set, List, Tuple, Callable
@@ -181,6 +182,8 @@ class Pool:
         self.time_target: int = pool_config["time_target"]
 
         self.collect_and_payment_lock: asyncio.Lock = asyncio.Lock()
+
+        self.launcher_lock: Dict[bytes32, asyncio.Lock] = defaultdict(asyncio.Lock)
 
         # Tasks (infinite While loops) for different purposes
         self.confirm_partials_loop_task: Optional[asyncio.Task] = None
@@ -1242,7 +1245,10 @@ class Pool:
 
         await self.pending_point_partials.put((partial, time_received_partial, current_difficulty))
 
-        async with self.store.lock:
+        try:
+            launcher_lock = self.launcher_lock[partial.payload.launcher_id]
+            await asyncio.wait_for(launcher_lock.acquire(), timeout=5)
+
             # Obtains the new record in case we just updated difficulty
             farmer_record: Optional[FarmerRecord] = await self.store.get_farmer_record(partial.payload.launcher_id)
             if farmer_record is not None:
@@ -1264,5 +1270,12 @@ class Pool:
                 if current_difficulty != new_difficulty:
                     await self.store.update_difficulty(partial.payload.launcher_id, new_difficulty)
                     current_difficulty = new_difficulty
+        except asyncio.TimeoutError:
+            self.log.warning(
+                'Failed to acquire lock for %s to check difficulty',
+                partial.payload.launcher_id.hex(),
+            )
+        finally:
+            launcher_lock.release()
 
         return PostPartialResponse(current_difficulty).to_json_dict()
