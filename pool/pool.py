@@ -3,6 +3,7 @@ import asyncio
 import json
 import itertools
 import logging
+import math
 import os
 import pathlib
 import subprocess
@@ -50,6 +51,7 @@ from chia.pools.pool_puzzles import (
 )
 
 from .difficulty_adjustment import get_new_difficulty
+from .fee import get_cost
 from .launchers import LaunchersSingleton
 from .partials import Partials
 from .singleton import (
@@ -140,7 +142,8 @@ class Pool:
         # otherwise, the fees will be sent to the users. Using 690783650
         self.pool_fee_puzzle_hash: bytes32 = bytes32(decode_puzzle_hash(pool_config["pool_fee_address"]))
 
-        self.transaction_fee = uint64(pool_config.get('transaction_fee') or 0)
+        self.payment_fee = pool_config.get('payment_fee')
+        self.absorb_fee = pool_config.get('absorb_fee')
 
         # We need to check for slow farmers. If farmers cannot submit proofs in time, they won't be able to win
         # any rewards either. This number can be tweaked to be more or less strict. More strict ensures everyone
@@ -476,8 +479,6 @@ class Pool:
                         self.log.info(f"Not claimable amount: {not_claimable_amounts / (10**12)}")
                         self.log.info(f"Not buried amounts: {not_buried_amounts / (10**12)}")
 
-                    absorbeb_coins: List[Tuple[CoinRecord, CoinRecord, FarmerRecord]] = []
-
                     for rec in farmer_records:
                         if not rec.is_pool_member:
                             continue
@@ -517,7 +518,7 @@ class Pool:
                             rec,
                             self.blockchain_state["peak"].height,
                             coins_to_absorb,
-                            self.transaction_fee,
+                            self.absorb_fee,
                             self.constants,
                         )
 
@@ -526,30 +527,9 @@ class Pool:
 
                         push_tx_response: Dict = await self.node_rpc_client.push_tx(spend_bundle)
                         if push_tx_response["status"] == "SUCCESS":
-                            absorbeb_coins += [
-                                (coin, singleton_coin_record, rec) for coin in coins_to_absorb
-                            ]
                             self.log.info(f"Submitted transaction successfully: {spend_bundle.name().hex()}")
                         else:
                             self.log.error(f"Error submitting transaction: {push_tx_response}")
-
-                    try:
-                        if absorbeb_coins:
-                            absorbeb_coins.sort(key=lambda x: int.from_bytes(
-                                bytes(x[0].coin.parent_coin_info)[16:], 'big'
-                            ))
-                            pool_size, etw = await self.partials.get_pool_size_and_etw()
-                            for coin, singleton_coin, rec in absorbeb_coins:
-                                await self.store.add_block(
-                                    coin, self.transaction_fee, singleton_coin, rec, pool_size, etw,
-                                )
-                    except Exception:
-                        self.log.error(
-                            'Failed to add absorbeb coins %r', absorbeb_coins, exc_info=True,
-                        )
-
-                    if absorbeb_coins:
-                        await self.run_hook('absorb', absorbeb_coins)
 
                 await asyncio.sleep(self.collect_pool_rewards_interval)
             except asyncio.CancelledError:
@@ -586,9 +566,10 @@ class Pool:
                         start_height=self.scan_start_height,
                     )
 
-                    last_singletons: List[str] = await self.store.get_last_block_singletons()
+                    last_singletons: List[str] = await self.store.get_last_singletons()
 
                     total_amount_claimed = 0
+                    absorbs = []
                     async with self.collect_and_payment_lock:
                         for c in list(coin_records):
 
@@ -611,23 +592,22 @@ class Pool:
                                 try:
                                     result = await find_singleton_from_coin(
                                         self.node_rpc_client, self.store,
-                                        self.blockchain_state['peak'].height, c, c.coin.parent_coin_info,
+                                        self.blockchain_state['peak'].height, c,
                                         list(self.scan_p2_singleton_puzzle_hashes),
                                     )
                                 except Exception:
                                     self.log.error('Failed to find singleton', exc_info=True)
 
                                 if result is not None:
-                                    self.log.info('Coin %r was not absorbeb by us', c.coin)
                                     absorb_coin, singleton_coin, farmer = result
+                                    self.log.info('%r - %r - %r - %r', c.name.hex(), absorb_coin.name.hex(), c.coin.parent_coin_info.hex(), singleton_coin.name.hex())
+                                    self.log.info('New coin farmed by %r', farmer.launcher_id.hex())
                                     pool_size, etw = await self.partials.get_pool_size_and_etw()
-                                    # We didnt absorb it, fee should be 0
+
                                     await self.store.add_block(
-                                        absorb_coin, 0, singleton_coin, farmer, pool_size, etw,
+                                        absorb_coin, absorb_coin.coin.amount - real_coin.coin.amount, singleton_coin, farmer, pool_size, etw,
                                     )
-                                    await self.run_hook('absorb', [
-                                        (absorb_coin, singleton_coin, farmer)
-                                    ])
+                                    absorbs.append((absorb_coin, singleton_coin, farmer))
                                 else:
                                     coin_records.remove(real_coin)
                                     self.log.info(
@@ -636,6 +616,9 @@ class Pool:
                                     continue
 
                             total_amount_claimed += real_coin.coin.amount
+
+                    if absorbs:
+                        await self.run_hook('absorb', absorbs)
 
                     if len(coin_records) == 0:
                         self.log.info("No funds to distribute (wallet %s).", wallet['fingerprint'])
@@ -737,7 +720,7 @@ class Pool:
 
                 if not self.blockchain_state["sync"]["synced"] or not wallet['synced']:
                     self.log.warning("Waiting for wallet %s sync", wallet['fingerprint'])
-                    await asyncio.sleep(60)
+                    await asyncio.sleep(30)
                     continue
 
                 async with wallet['payment_lock']:
@@ -763,20 +746,41 @@ class Pool:
                                 transaction = await wallet['rpc_client'].get_transaction(
                                     wallet['id'], tx_id
                                 )
+                                # Transaction already exists, lets readjust transaction fee
+                                # FIXME: O(n2) -- optimize
+                                for addition_coin in transaction.additions:
+                                    for i in payment_targets:
+                                        if addition_coin.puzzle_hash == i['puzzle_hash']:
+                                            i['tx_fee'] = i['amount'] - int(addition_coin.amount)
+                                            i['amount'] = int(addition_coin.amount)
+                                            break
+                                    else:
+                                        if addition_coin.amount > 1:
+                                            raise RuntimeError('Addition coin not found %r', addition_coin)
                             except ValueError as e:
                                 if 'not found' in str(e):
                                     await self.store.remove_transaction(tx_id)
                                     tx_id = None
 
                         if tx_id is None:
-                            blockchain_fee: uint64 = self.transaction_fee
-                            if int(blockchain_fee) > payment_targets[0]['amount']:
-                                self.log.error('Transaction fee cannot be higher than pool fee.')
-                                await asyncio.sleep(60)
-                                break
+
+                            if self.payment_fee:
+                                transaction: TransactionRecord = await wallet['rpc_client'].create_signed_transaction(
+                                    payment_targets, fee=25000000 * len(payment_targets),  # Estimated fee
+                                )
+                                total_cost = await get_cost(transaction.spend_bundle, self.constants) * 5  # 5 mojos per cost
+                                cost_per_target = math.ceil(D(total_cost) / D(len(payment_targets)))
+                                # Recalculate fee after ceiling value per target
+                                blockchain_fee = uint64(cost_per_target * len(payment_targets))
+
+                                for i in payment_targets:
+                                    i['amount'] -= cost_per_target
+                                    if i['amount'] <= 0:
+                                        raise RuntimeError('Launcher id does not have enough for a fee payment')
+                                    i['tx_fee'] = cost_per_target
                             else:
-                                # Subtract the transaction fee from pool fee
-                                payment_targets[0]['amount'] -= int(blockchain_fee)
+                                blockchain_fee = uint64(0)
+
                             try:
                                 transaction: TransactionRecord = await wallet['rpc_client'].send_transaction_multi(
                                     wallet['id'], payment_targets, fee=blockchain_fee
@@ -805,7 +809,7 @@ class Pool:
                                 self.log.info(f"Confirmations: {peak_height - transaction.confirmed_at_height}")
                             await asyncio.sleep(10)
 
-                        await self.store.confirm_transaction(transaction, payment_targets[0])
+                        await self.store.confirm_transaction(transaction, payment_targets)
                         self.log.info(f"Successfully confirmed payments {payment_targets}")
 
             except asyncio.CancelledError:
@@ -1151,8 +1155,9 @@ class Pool:
             # still keep track of this singleton if the farmer has changed to a different pool, in case they
             # switch back.
             self.log.info(f"Updating singleton state for {launcher_id}")
+            singleton_coin = get_most_recent_singleton_coin_from_coin_spend(buried_singleton_tip)
             await self.store.update_singleton(
-                farmer_rec, buried_singleton_tip, buried_singleton_tip_state, is_pool_member
+                farmer_rec, singleton_coin, buried_singleton_tip, buried_singleton_tip_state, is_pool_member
             )
 
         return buried_singleton_tip, buried_singleton_tip_state, is_pool_member

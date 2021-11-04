@@ -9,6 +9,7 @@ from blspy import G1Element
 from chia.pools.pool_wallet_info import PoolState
 from chia.protocols.pool_protocol import PostPartialPayload, PostPartialRequest
 from chia.types.blockchain_format.sized_bytes import bytes32
+from chia.types.blockchain_format.coin import Coin
 from chia.types.coin_record import CoinRecord
 from chia.types.coin_spend import CoinSpend
 from chia.util.ints import uint64
@@ -28,7 +29,7 @@ class PgsqlPoolStore(AbstractPoolStore):
         async with self.pool.acquire() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute(sql, args or [])
-                if sql.lower().startswith('select') or ' returning ' in sql.lower():
+                if sql.lower().startswith(('select', 'with')) or ' returning ' in sql.lower():
                     return await cursor.fetchall()
 
     async def connect(self):
@@ -154,6 +155,7 @@ class PgsqlPoolStore(AbstractPoolStore):
     async def update_singleton(
         self,
         farmer_record: FarmerRecord,
+        singleton_coin: Coin,
         singleton_tip: CoinSpend,
         singleton_tip_state: PoolState,
         is_pool_member: bool,
@@ -174,6 +176,20 @@ class PgsqlPoolStore(AbstractPoolStore):
                 farmer_record.launcher_id.hex(),
             ),
         )
+        if singleton_coin:
+            await self._execute(
+                'INSERT INTO singleton ('
+                ' launcher_id, singleton_name, singleton_tip, singleton_tip_state, created_at'
+                ') VALUES ('
+                ' %s,          %s,             %s,            %s,                  NOW()'
+                ')',
+                (
+                    farmer_record.launcher_id.hex(),
+                    singleton_coin.name().hex(),
+                    bytes(singleton_tip),
+                    bytes(singleton_tip_state),
+                ),
+            )
 
     async def update_farmer(self, launcher_id: bytes32, attributes: List, values: List) -> None:
         attrs = []
@@ -405,9 +421,9 @@ class PgsqlPoolStore(AbstractPoolStore):
                 payout_round += 1
                 await self._execute(
                     "INSERT INTO payout_address "
-                    "(payout_id, payout_round, fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction) "
+                    "(payout_id, payout_round, fee, tx_fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction) "
                     "VALUES "
-                    "(%s,        %s,           true, %s,         %s,               NULL,        %s,     NULL,        0,               NULL)",
+                    "(%s,        %s,           true, 0,  %s,         %s,               NULL,        %s,     NULL,        0,               NULL)",
                     (payout_id, payout_round, fee_puzzle_hash.hex(), pool_puzzle_hash.hex(), pool_fee_per_round),
                 )
 
@@ -421,10 +437,10 @@ class PgsqlPoolStore(AbstractPoolStore):
                 farmer = 'NULL'
             await self._execute(
                 "INSERT INTO payout_address "
-                "(payout_id, payout_round, fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction) "
+                "(payout_id, payout_round, fee, tx_fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction) "
                 "VALUES "
-                "(%%s,       %%s,          false, %%s,       %%s,              %s,          %%s,    %%s,         %%s,              NULL)" % (farmer,),
-                (payout_id, payout_round, i["puzzle_hash"].hex(), pool_puzzle_hash.hex(), i["amount"], i.get('referral'), i.get('referral_amount') or 0),
+                "(%%s,       %%s,          false, %%s,  %%s,       %%s,              %s,          %%s,    %%s,         %%s,              NULL)" % (farmer,),
+                (payout_id, payout_round, i.get('tx_fee') or 0, i["puzzle_hash"].hex(), pool_puzzle_hash.hex(), i["amount"], i.get('referral'), i.get('referral_amount') or 0),
             )
             if referral := i.get('referral'):
                 await self._execute(
@@ -474,16 +490,15 @@ class PgsqlPoolStore(AbstractPoolStore):
             })
         return payment_targets_per_tx
 
-    async def confirm_transaction(self, transaction, fee_payment_target):
+    async def confirm_transaction(self, transaction, payment_targets):
         await self._execute(
             "UPDATE payout_address SET confirmed_block_index = %s WHERE transaction = %s",
             (int(transaction.confirmed_at_height), transaction.name.hex()),
         )
-        if int(transaction.fee_amount) > 0:
-            # Subtract the transaction fee from pool fee
+        for i in payment_targets:
             await self._execute(
-                "UPDATE payout_address SET amount = amount - %s WHERE id = %s",
-                (int(transaction.fee_amount), fee_payment_target['id']),
+                "UPDATE payout_address SET amount = %s, tx_fee = %s WHERE id = %s",
+                (i['amount'], i.get('tx_fee') or 0, i['id']),
             )
 
     async def remove_transaction(self, tx_id: bytes32):
@@ -492,13 +507,19 @@ class PgsqlPoolStore(AbstractPoolStore):
             (tx_id.hex(), ),
         )
 
-    async def get_last_block_singletons(self) -> List[str]:
-        return [
+    async def get_last_singletons(self) -> List[str]:
+        # Get the last 10 singletons of each launcher
+        singletons = [
             i[0] for i in
             await self._execute(
-                "SELECT singleton FROM block ORDER BY confirmed_block_index DESC LIMIT 20"
+                'WITH c AS ('
+                ' SELECT singleton_name, row_number() OVER ('
+                '  PARTITION BY launcher_id ORDER BY created_at DESC'
+                ' ) AS singleton_rank FROM singleton'
+                ') SELECT singleton_name FROM c WHERE singleton_rank <= 10'
             )
         ]
+        return singletons
 
     async def set_pool_size(self, size: int) -> None:
         await self._execute(

@@ -7,7 +7,7 @@ from chia.consensus.coinbase import pool_parent_id
 from chia.consensus.constants import ConsensusConstants
 from chia.pools.pool_puzzles import (
     create_absorb_spend,
-    solution_to_extra_data,
+    solution_to_pool_state,
     get_most_recent_singleton_coin_from_coin_spend,
     pool_state_to_inner_puzzle,
     create_full_puzzle,
@@ -75,7 +75,7 @@ async def get_singleton_state(
 
             last_spend: Optional[CoinSpend] = await get_coin_spend(node_rpc_client, launcher_coin)
             delay_time, delay_puzzle_hash = get_delayed_puz_info_from_launcher_spend(last_spend)
-            saved_state = solution_to_extra_data(last_spend)
+            saved_state = solution_to_pool_state(last_spend)
             assert last_spend is not None and saved_state is not None
         else:
             last_spend = farmer_record.singleton_tip
@@ -121,7 +121,7 @@ async def get_singleton_state(
             last_spend: Optional[CoinSpend] = await get_coin_spend(node_rpc_client, next_coin_record)
             assert last_spend is not None
 
-            pool_state: Optional[PoolState] = solution_to_extra_data(last_spend)
+            pool_state: Optional[PoolState] = solution_to_pool_state(last_spend)
 
             if pool_state is not None:
                 last_not_none_state = pool_state
@@ -157,7 +157,7 @@ async def create_absorb_transaction(
     farmer_record: FarmerRecord,
     peak_height: uint32,
     reward_coin_records: List[CoinRecord],
-    fee: uint64,
+    fee,
     constants: ConsensusConstants,
 ) -> Optional[SpendBundle]:
     singleton_state_tuple: Optional[Tuple[CoinSpend, PoolState, PoolState]] = await get_singleton_state(
@@ -202,25 +202,31 @@ async def create_absorb_transaction(
     if len(all_spends) == 0:
         return None
 
-    if fee > 0:
-        return await spend_with_fee(node_rpc_client, wallets, all_spends, fee, constants)
+    if fee:
+        return await spend_with_fee(node_rpc_client, wallets, all_spends, constants)
     else:
         return SpendBundle(all_spends, G2Element())
 
 
 async def find_singleton_from_coin(
     node_rpc_client: FullNodeRpcClient, store, blockchain_height: int, coin: CoinRecord,
-    singleton_name: bytes32, scan_phs: List[bytes32]
+    scan_phs: List[bytes32]
 ):
 
     coin_records: List[CoinRecord] = await node_rpc_client.get_coin_records_by_puzzle_hashes(
         scan_phs,
         include_spent_coins=True,
-        start_height=blockchain_height - 1000,
+        start_height=coin.confirmed_block_index - 1000,
+        end_height=coin.confirmed_block_index,
     )
+
+    singleton_name: bytes32 = coin.coin.parent_coin_info
 
     for c in sorted(coin_records, key=lambda x: int(x.confirmed_block_index), reverse=True):
         if not c.coinbase:
+            continue
+
+        if not c.spent:
             continue
 
         farmer = await store.get_farmer_records_for_p2_singleton_phs([c.coin.puzzle_hash])
@@ -237,15 +243,15 @@ async def find_singleton_from_coin(
         singleton_coin_record: Optional[
             CoinRecord
         ] = await node_rpc_client.get_coin_record_by_name(singleton_tip.name())
-        if singleton_coin_record is None:
-            continue
 
-        if singleton_coin_record.name == singleton_name:
-            return (c, singleton_coin_record, farmer)
+        for i in range(10):
 
-        singleton_coin_record = await node_rpc_client.get_coin_record_by_name(
-            singleton_coin_record.coin.parent_coin_info
-        )
+            if not singleton_coin_record:
+                break
 
-        if singleton_coin_record and singleton_coin_record.name == singleton_name:
-            return (c, singleton_coin_record, farmer)
+            if singleton_coin_record.name == singleton_name:
+                return (c, singleton_coin_record, farmer)
+
+            singleton_coin_record = await node_rpc_client.get_coin_record_by_name(
+                singleton_coin_record.coin.parent_coin_info
+            )
