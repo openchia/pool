@@ -31,3 +31,13 @@ class RequestMetadata:
 
     def __post_init__(self):
         self.headers = {k.lower(): v for k, v in self.headers.items()}
+
+
+def payment_targets_to_additions(payment_targets, min_payment):
+    additions = []
+    for ph, amounts in payment_targets.items():
+        amount = sum([i['amount'] for i in amounts])
+        if amount >= min_payment:
+            additions.append({'puzzle_hash': ph, 'amount': amount})
+    return additions
+
