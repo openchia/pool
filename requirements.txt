@@ -1,4 +1,4 @@
-git+git://github.com/Chia-Network/chia-blockchain.git@1.2.10#egg=chia-blockchain
+git+git://github.com/william-gr/chia-blockchain.git@feature/wallet_push_tx#egg=chia-blockchain
 blspy~=1.0.2
 setuptools~=56.1.0
 aiopg

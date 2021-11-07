@@ -737,7 +737,10 @@ class Pool:
                                 wallet['id'], tx_id
                             )
                             # Transaction already exists, lets readjust transaction fee
+                            transation_phs = set()
+                            unaccounted_amount = None
                             for addition_coin in transaction.additions:
+                                transation_phs.add(addition_coin.puzzle_hash)
                                 target: List = payment_targets.get(addition_coin.puzzle_hash)
                                 if target:
                                     amounts = sum(map(lambda x: x['amount'], target))
@@ -747,10 +750,18 @@ class Pool:
                                             t['tx_fee'] = fee_per_payout
                                             t['amount'] -= fee_per_payout
                                 else:
-                                    if addition_coin.amount > 1:
-                                        raise RuntimeError('Addition coin not found %r', addition_coin)
+                                    if unaccounted_amount is None:
+                                        # TODO: Make sure this address belong to pool wallet
+                                        unaccounted_amount = int(addition_coin.amount)
+                                    else:
+                                        raise RuntimeError('More than one change coin %r', addition_coin)
+                            # Remove payment_targets not in the transaction
+                            for ph in (set(payment_targets.keys()) - transation_phs):
+                                payment_targets.pop(ph)
+
                         except ValueError as e:
                             if 'not found' in str(e):
+                                self.log.info(f'Transaction {tx_id} not found, removing.')
                                 await self.store.remove_transaction(tx_id)
                                 tx_id = None
 
@@ -776,10 +787,10 @@ class Pool:
                                     i['tx_fee'] = cost_per_payout
                                 if total <= 0:
                                     raise RuntimeError('Launcher id does not have enough for a fee payment')
+                            # Redo additions with proper amount this time
+                            additions = payment_targets_to_additions(payment_targets, self.min_payment)
                         else:
                             blockchain_fee = uint64(0)
-
-                        additions = payment_targets_to_additions(payment_targets, self.min_payment)
 
                         if not additions:
                             self.log.info('No payments above minimum, skipping.')
@@ -789,13 +800,45 @@ class Pool:
                         self.log.info(f"Submitting a payment: {dict(payment_targets)}")
 
                         try:
-                            transaction: TransactionRecord = await wallet['rpc_client'].send_transaction_multi(
-                                wallet['id'], additions, fee=blockchain_fee
+                            transaction: TransactionRecord = await wallet['rpc_client'].create_signed_transaction(
+                                additions, fee=blockchain_fee
                             )
                         except ValueError as e:
-                            self.log.error(f"Error making payment: {e}")
+                            self.log.error(f"Error creating transaction: {e}")
                             await asyncio.sleep(10)
                             continue
+
+                        payout_ids = set()
+                        for targets in payment_targets.values():
+                            for t in targets:
+                                payout_ids.add(t['payout_id'])
+
+                        coin_rewards = await self.store.get_coin_rewards_from_payout_ids(payout_ids)
+
+                        for coin in transaction.spend_bundle.removals():
+                            if coin.puzzle_hash == wallet['puzzle_hash']:
+                                if coin.name() not in coin_rewards:
+                                    raise RuntimeError(
+                                        f'Select coin {coin.name().hex()}:{coin!r} not registered as a reward'
+                                    )
+                                coin_rewards.remove(coin.name())
+
+                        for cr in await self.node_rpc_client.get_coin_records_by_names(
+                            coin_rewards,
+                            include_spent_coins=True,
+                        ):
+                            # That coin reward was already spent
+                            if cr.spent:
+                                coin_rewards.remove(cr.coin.name())
+
+                        if coin_rewards:
+                            raise RuntimeError(
+                                f'{len(coin_rewards)} expected coins were not distributed'
+                            )
+
+                        await wallet['rpc_client'].push_transaction(
+                            wallet['id'], transaction
+                        )
 
                         self.log.info(f"Transaction: {transaction}")
                         await self.store.add_transaction(transaction, payment_targets)
@@ -823,7 +866,6 @@ class Pool:
                 self.log.info("Cancelled submit_payment_loop, closing")
                 return
             except Exception as e:
-                # TODO(pool): retry transaction if failed
                 self.log.error(f"Unexpected error in submit_payment_loop: {e}", exc_info=True)
                 await asyncio.sleep(60)
 

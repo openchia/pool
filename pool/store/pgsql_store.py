@@ -481,6 +481,16 @@ class PgsqlPoolStore(AbstractPoolStore):
             )
         ]
 
+    async def get_coin_rewards_from_payout_ids(self, payout_ids: Set[int]) -> Set[bytes32]:
+        return {
+            bytes32(bytes.fromhex(i[0]))
+            for i in await self._execute(
+                'SELECT name FROM coin_reward WHERE payout_id IN ({})'.format(
+                    ', '.join([str(j) for j in payout_ids])
+                ),
+            )
+        }
+
     async def get_pending_payment_targets(self, pool_puzzle_hash: bytes32):
         payment_targets_per_tx = defaultdict(lambda: defaultdict(list))
         payout_round = None
@@ -532,7 +542,7 @@ class PgsqlPoolStore(AbstractPoolStore):
                 'WITH c AS ('
                 ' SELECT singleton_name, row_number() OVER ('
                 '  PARTITION BY launcher_id ORDER BY created_at DESC'
-                ' ) AS singleton_rank FROM singleton'
+                ' ) AS singleton_rank FROM singleton ORDER BY created_at DESC'
                 ') SELECT singleton_name FROM c WHERE singleton_rank <= 10'
             )
         ]
