@@ -803,8 +803,7 @@ class Pool:
 
                         transaction: TransactionRecord = await create_transaction(
                             self.node_rpc_client,
-                            wallet['rpc_client'],
-                            wallet['puzzle_hash'],
+                            wallet,
                             self.store,
                             additions,
                             blockchain_fee,

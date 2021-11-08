@@ -66,8 +66,7 @@ def check_transaction(transaction, wallet_ph):
 
 async def create_transaction(
     node_rpc_client,
-    wallet_rpc_client,
-    wallet_ph,
+    wallet,
     store,
     additions,
     fee,
@@ -93,22 +92,47 @@ async def create_transaction(
 
     # If no reward coins are spent we can use them as sole source coins for the transaction
     if len(coin_records) == len(unspent_coins):
-        transaction = await wallet_rpc_client.create_signed_transaction(
+        transaction = await wallet['rpc_client'].create_signed_transaction(
             additions, coins=list(unspent_coins), fee=fee
         )
         return transaction
 
     # If a coin was spent we give a shot for the Wallet automatically select the required coins
-    transaction = await wallet_rpc_client.create_signed_transaction(
-        additions, fee=fee
-    )
+    transaction = await wallet['rpc_client'].create_signed_transaction(additions, fee=fee)
 
-    ph_coins, non_ph_coins = check_transaction(transaction, wallet_ph)
+    ph_coins, non_ph_coins = check_transaction(transaction, wallet['puzzle_hash'])
     # If there are more coins in wallet puzzle hash than from unspent coin for the payouts
     # we try once again using only the unspent reward coins and the coins outside wallet puzzle hash.
     if ph_coins - unspent_coins:
         logger.info('Redoing transaction to only include reward coins')
-        transaction = await wallet_rpc_client.create_signed_transaction(
-            additions, coins=list(unspent_coins) + list(non_ph_coins), fee=fee
-        )
+
+        total_additions = sum(a['amount'] for a in additions)
+        total_coins = sum(int(c.amount) for c in list(unspent_coins) + list(non_ph_coins))
+        if total_additions <= total_coins:
+            transaction = await wallet['rpc_client'].create_signed_transaction(
+                additions, coins=list(unspent_coins) + list(non_ph_coins), fee=fee
+            )
+        else:
+            # We are short of coins to make the payment
+            logger.info('Getting extra non ph coins')
+            balance = await wallet['rpc_client'].get_wallet_balance(wallet['id'])
+            transaction = await wallet['rpc_client'].create_signed_transaction([{
+                'puzzle_hash': wallet['puzzle_hash'],
+                'amount': balance['spendable_balance'],
+            }])
+
+            amount_missing = total_additions - total_coins
+            for coin in transaction.spend_bundle.removals():
+                if coin.puzzle_hash == wallet['puzzle_hash']:
+                    continue
+                if coin not in non_ph_coins:
+                    amount_missing -= int(coin.amount)
+                    non_ph_coins.add(coin)
+                    if amount_missing <= 0:
+                        break
+            else:
+                raise RuntimeError('Not enough non puzzle hash coins for payment')
+            transaction = await wallet['rpc_client'].create_signed_transaction(
+                additions, coins=list(unspent_coins) + list(non_ph_coins), fee=fee
+            )
     return transaction
