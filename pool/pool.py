@@ -229,6 +229,7 @@ class Pool:
                 wallet['rpc_client'] = await WalletRpcClient.create(
                     wallet['hostname'], uint16(wallet['rpc_port']), DEFAULT_ROOT_PATH, self.config
                 )
+            wallet['synced'] = await wallet['rpc_client'].get_synced()
 
         while True:
             try:
