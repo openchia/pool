@@ -58,7 +58,7 @@ from .singleton import (
     create_absorb_transaction,
     get_singleton_state,
     get_coin_spend,
-    find_singleton_from_coin,
+    find_reward_from_coinrecord,
 )
 from .store.abstract import AbstractPoolStore
 from .store.pgsql_store import PgsqlPoolStore
@@ -549,13 +549,13 @@ class Pool:
                     await asyncio.sleep(60)
                     continue
 
+                peak_height = self.blockchain_state["peak"].height
                 coin_records: List[CoinRecord] = await self.node_rpc_client.get_coin_records_by_puzzle_hash(
                     wallet['puzzle_hash'],
                     include_spent_coins=False,
                     start_height=self.scan_start_height,
                 )
 
-                last_singletons: List[str] = await self.store.get_last_singletons()
                 pending_payments_coins: List[str] = await self.store.get_pending_payments_coins(
                     wallet['puzzle_hash']
                 )
@@ -564,46 +564,49 @@ class Pool:
                 absorbs = []
                 for c in list(coin_records):
 
+                    if c.confirmed_block_index > peak_height - self.confirmation_security_threshold:
+                        # Skip unburied coins
+                        coin_records.remove(c)
+                        continue
+
                     # That coin was already registered in a payment that is pending
                     if c.name.hex() in pending_payments_coins:
                         coin_records.remove(c)
                         continue
 
                     real_coin = c
-                    if c.coin.parent_coin_info.hex() not in last_singletons:
+                    #if not await self.store.block_exists(c.coin.parent_coin_info.hex()):
+                    #    # Check if its a double spend to absorb with a fee
+                    #    parent_coin_record: Optional[CoinRecord] = (
+                    #        await self.node_rpc_client.get_coin_record_by_name(
+                    #            c.coin.parent_coin_info,
+                    #        )
+                    #    )
+                    #    # The parent coin would have same puzzle hash of the wallet
+                    #    if parent_coin_record and parent_coin_record.spent and parent_coin_record.coin.puzzle_hash == wallet['puzzle_hash']:
+                    #        c = parent_coin_record
 
-                        # Check if its a double spend to absorb with a fee
-                        parent_coin_record: Optional[CoinRecord] = (
-                            await self.node_rpc_client.get_coin_record_by_name(
-                                c.coin.parent_coin_info,
-                            )
-                        )
-                        # The parent coin would have same puzzle hash of the wallet
-                        if parent_coin_record and parent_coin_record.spent and parent_coin_record.coin.puzzle_hash == wallet['puzzle_hash']:
-                            c = parent_coin_record
-
-                    if c.coin.parent_coin_info.hex() not in last_singletons:
+                    if not await self.store.block_exists(c.coin.parent_coin_info.hex()):
 
                         result = None
                         try:
-                            result = await find_singleton_from_coin(
-                                self.node_rpc_client, self.store,
-                                self.blockchain_state['peak'].height, c,
-                                list(self.scan_p2_singleton_puzzle_hashes),
+                            result = await find_reward_from_coinrecord(
+                                self.node_rpc_client,
+                                self.store,
+                                c,
                             )
                         except Exception:
-                            self.log.error('Failed to find singleton', exc_info=True)
+                            self.log.error('Failed to find absorb', exc_info=True)
 
                         if result is not None:
-                            absorb_coin, singleton_coin, farmer = result
-                            self.log.info('%r - %r - %r - %r', c.name.hex(), absorb_coin.name.hex(), c.coin.parent_coin_info.hex(), singleton_coin.name.hex())
+                            reward_coin, farmer = result
                             self.log.info('New coin farmed by %r', farmer.launcher_id.hex())
                             pool_size, etw = await self.partials.get_pool_size_and_etw()
 
                             await self.store.add_block(
-                                absorb_coin, absorb_coin.coin.amount - real_coin.coin.amount, singleton_coin, farmer, pool_size, etw,
+                                reward_coin, 0, c.coin.parent_coin_info, farmer, pool_size, etw,
                             )
-                            absorbs.append((absorb_coin, singleton_coin, farmer))
+                            absorbs.append((reward_coin, farmer))
                         else:
                             coin_records.remove(real_coin)
                             self.log.info(
@@ -819,7 +822,7 @@ class Pool:
                             if coin.puzzle_hash == wallet['puzzle_hash']:
                                 if coin.name() not in coin_rewards:
                                     raise RuntimeError(
-                                        f'Select coin {coin.name().hex()}:{coin!r} not registered as a reward'
+                                        f'Selected coin {coin.name().hex()}:{coin!r} not registered as a reward'
                                     )
                                 coin_rewards.remove(coin.name())
 

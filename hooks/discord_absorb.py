@@ -18,7 +18,7 @@ async def discord_blocks_farmed(absorbeb_coins):
 
     coins = []
     farmers = set()
-    for coin, singleton_coin, farmer_record in absorbeb_coins:
+    for coin, farmer_record in absorbeb_coins:
         coins.append(coin)
         farmers.add(farmer_record['launcher_id'])
 

@@ -3,6 +3,7 @@ import logging
 
 from blspy import G2Element
 
+from chia.consensus.block_record import BlockRecord
 from chia.consensus.coinbase import pool_parent_id
 from chia.consensus.constants import ConsensusConstants
 from chia.pools.pool_puzzles import (
@@ -208,50 +209,33 @@ async def create_absorb_transaction(
         return SpendBundle(all_spends, G2Element())
 
 
-async def find_singleton_from_coin(
-    node_rpc_client: FullNodeRpcClient, store, blockchain_height: int, coin: CoinRecord,
-    scan_phs: List[bytes32]
-):
+async def find_reward_from_coinrecord(
+    node_rpc_client: FullNodeRpcClient, store, coin_record: CoinRecord,
+) -> Optional[Tuple[CoinRecord, FarmerRecord]]:
 
-    coin_records: List[CoinRecord] = await node_rpc_client.get_coin_records_by_puzzle_hashes(
-        scan_phs,
-        include_spent_coins=True,
-        start_height=coin.confirmed_block_index - 1000,
-        end_height=coin.confirmed_block_index,
+    farmer: FarmerRecord = await store.get_farmer_record_from_singleton(
+        coin_record.coin.parent_coin_info
     )
 
-    singleton_name: bytes32 = coin.coin.parent_coin_info
+    if not farmer:
+        return None
 
-    for c in sorted(coin_records, key=lambda x: int(x.confirmed_block_index), reverse=True):
-        if not c.coinbase:
-            continue
-
-        if not c.spent:
-            continue
-
-        farmer = await store.get_farmer_records_for_p2_singleton_phs([c.coin.puzzle_hash])
-        if not farmer:
-            continue
-        farmer = farmer[0]
-
-        singleton_tip: Optional[Coin] = get_most_recent_singleton_coin_from_coin_spend(
-            farmer.singleton_tip
+    block_record: BlockRecord = await node_rpc_client.get_block_record_by_height(coin_record.confirmed_block_index)
+    if block_record.is_transaction_block or True:
+        additions, removals = await node_rpc_client.get_additions_and_removals(
+            block_record.header_hash
         )
-        if singleton_tip is None:
-            continue
-
-        singleton_coin_record: Optional[
-            CoinRecord
-        ] = await node_rpc_client.get_coin_record_by_name(singleton_tip.name())
-
-        for i in range(10):
-
-            if not singleton_coin_record:
+        found = None
+        for cr in additions:
+            if cr.name == coin_record.name:
+                found = cr
                 break
-
-            if singleton_coin_record.name == singleton_name:
-                return (c, singleton_coin_record, farmer)
-
-            singleton_coin_record = await node_rpc_client.get_coin_record_by_name(
-                singleton_coin_record.coin.parent_coin_info
-            )
+        reward_coin = None
+        if found:
+            for cr in removals:
+                if cr.spent and cr.spent_block_index == coin_record.confirmed_block_index and \
+                        cr.coin.puzzle_hash == farmer.p2_singleton_puzzle_hash:
+                    reward_coin = cr
+                    break
+        if reward_coin:
+            return reward_coin, farmer

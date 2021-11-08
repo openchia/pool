@@ -340,7 +340,10 @@ class PgsqlPoolStore(AbstractPoolStore):
         ]
 
     async def add_block(
-        self, coin_record: CoinRecord, absorb_fee: int, singleton_coin_record: CoinRecord,
+        self,
+        reward_record: CoinRecord,
+        absorb_fee: int,
+        singleton: bytes32,
         farmer: FarmerRecord,
         pool_space: int,
         estimate_to_win: int,
@@ -358,7 +361,7 @@ class PgsqlPoolStore(AbstractPoolStore):
             else:
                 effective_etw = estimate_to_win
 
-            time_since_last = int(coin_record.timestamp) - last_timestamp
+            time_since_last = int(reward_record.timestamp) - last_timestamp
             # If time is negative means we are adding a block that was won some time ago
             # e.g. farmer that wasn't sending partials to the pool
             if time_since_last < 0:
@@ -375,13 +378,13 @@ class PgsqlPoolStore(AbstractPoolStore):
             " %s,   %s,        %s,        %s,            %s,                    %s,          %s,     %s,           %s,              %s,         %s,   %s"
             ")",
             (
-                coin_record.name.hex(),
-                singleton_coin_record.name.hex(),
-                int(coin_record.timestamp),
-                int.from_bytes(bytes(coin_record.coin.parent_coin_info)[16:], 'big'),
-                int(coin_record.confirmed_block_index),
-                coin_record.coin.puzzle_hash.hex(),
-                int(coin_record.coin.amount),
+                reward_record.name.hex(),
+                singleton.hex(),
+                int(reward_record.timestamp),
+                int.from_bytes(bytes(reward_record.coin.parent_coin_info)[16:], 'big'),
+                int(reward_record.confirmed_block_index),
+                reward_record.coin.puzzle_hash.hex(),
+                int(reward_record.coin.amount),
                 farmer.launcher_id.hex(),
                 estimate_to_win,
                 pool_space,
@@ -389,6 +392,17 @@ class PgsqlPoolStore(AbstractPoolStore):
                 absorb_fee,
             )
         )
+
+    async def block_exists(self, singleton: str) -> bool:
+        return bool(await self._execute('SELECT id FROM block WHERE singleton = %s', [singleton]))
+
+    async def get_farmer_record_from_singleton(self, singleton: bytes32) -> Optional[FarmerRecord]:
+        rv = await self._execute('SELECT launcher_id FROM singleton WHERE singleton_name = %s', [
+            singleton.hex()
+        ])
+        if not rv:
+            return None
+        return await self.get_farmer_record(bytes32(bytes.fromhex(rv[0][0])))
 
     async def add_payout(self, coin_records, pool_puzzle_hash, fee_puzzle_hash, amount, pool_fee, referral, payment_targets) -> int:
 
