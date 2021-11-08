@@ -64,7 +64,7 @@ from .store.abstract import AbstractPoolStore
 from .store.pgsql_store import PgsqlPoolStore
 from .record import FarmerRecord
 from .task import task_exception
-from .util import error_dict, payment_targets_to_additions, RequestMetadata
+from .util import create_transaction, error_dict, payment_targets_to_additions, RequestMetadata
 from .xchprice import XCHPrice
 
 SECONDS_PER_BLOCK = (24 * 3600) / 4608
@@ -800,44 +800,17 @@ class Pool:
                             await asyncio.sleep(30)
                             continue
 
+                        transaction: TransactionRecord = await create_transaction(
+                            self.node_rpc_client,
+                            wallet['rpc_client'],
+                            wallet['puzzle_hash'],
+                            self.store,
+                            additions,
+                            blockchain_fee,
+                            payment_targets,
+                        )
+
                         self.log.info(f"Submitting a payment: {dict(payment_targets)}")
-
-                        try:
-                            transaction: TransactionRecord = await wallet['rpc_client'].create_signed_transaction(
-                                additions, fee=blockchain_fee
-                            )
-                        except ValueError as e:
-                            self.log.error(f"Error creating transaction: {e}")
-                            await asyncio.sleep(10)
-                            continue
-
-                        payout_ids = set()
-                        for targets in payment_targets.values():
-                            for t in targets:
-                                payout_ids.add(t['payout_id'])
-
-                        coin_rewards = await self.store.get_coin_rewards_from_payout_ids(payout_ids)
-
-                        for coin in transaction.spend_bundle.removals():
-                            if coin.puzzle_hash == wallet['puzzle_hash']:
-                                if coin.name() not in coin_rewards:
-                                    raise RuntimeError(
-                                        f'Selected coin {coin.name().hex()}:{coin!r} not registered as a reward'
-                                    )
-                                coin_rewards.remove(coin.name())
-
-                        for cr in await self.node_rpc_client.get_coin_records_by_names(
-                            coin_rewards,
-                            include_spent_coins=True,
-                        ):
-                            # That coin reward was already spent
-                            if cr.spent:
-                                coin_rewards.remove(cr.coin.name())
-
-                        if coin_rewards:
-                            raise RuntimeError(
-                                f'{len(coin_rewards)} expected coins were not distributed'
-                            )
 
                         await wallet['rpc_client'].push_transaction(
                             wallet['id'], transaction
