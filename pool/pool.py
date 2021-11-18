@@ -6,6 +6,7 @@ import logging
 import math
 import os
 import pathlib
+import shlex
 import subprocess
 import time
 from asyncio import Task
@@ -334,7 +335,9 @@ class Pool:
                 logger.debug('Hook %r does not exist', hook)
                 continue
 
-            final_args = tuple([hook, name.upper()] + [json.dumps(dump(i)) for i in args])
+            final_args = tuple(
+                shlex.split(hook) + [name.upper()] + [json.dumps(dump(i)) for i in args]
+            )
 
             async def run():
                 env = os.environ.copy()
