@@ -6,6 +6,8 @@ import os
 import sys
 import yaml
 
+from pool.store.pgsql_store import PgsqlPoolStore
+
 
 def load_config():
     with open(os.environ['CONFIG_PATH'], 'r') as f:
@@ -14,11 +16,24 @@ def load_config():
 
 async def fcm_blocks_farmed(absorbeb_coins):
     config = load_config()
+
+    store = PgsqlPoolStore(config)
+    await store.connect()
+
+    fcm_tokens = set()
+    for farmer in (await store.get_farmer_records([
+        ('is_pool_member', '=', True),
+        ('fcm_token', 'IS NOT NULL', None),
+    ])).values():
+        if farmer.fcm_token:
+            fcm_tokens.add(farmer.fcm_token)
+
+    await store.close()
+
     absorbeb_coins = json.loads(absorbeb_coins.strip())
 
     farmed_heights = []
     farmers = set()
-    fcm_tokens = set()
     for coin, farmer_record in absorbeb_coins:
         farmed_heights.append(
             str(int.from_bytes(bytes(coin['coin']['parent_coin_info'])[16:], 'big'))

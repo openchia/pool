@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Optional
 
 from blspy import G1Element
 from chia.pools.pool_wallet_info import PoolState
@@ -22,7 +23,7 @@ class FarmerRecord(Streamable):
     difficulty: uint64  # Current difficulty for this farmer
     payout_instructions: str  # This is where the pool will pay out rewards to the farmer
     is_pool_member: bool  # If the farmer leaves the pool, this gets set to False
-    email: str
+    email: Optional[str]
     estimated_size: uint64
-    name: str
-    fcm_token: str
+    name: Optional[str]
+    fcm_token: Optional[str]

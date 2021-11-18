@@ -339,6 +339,7 @@ class Pool:
             async def run():
                 env = os.environ.copy()
                 env['CONFIG_PATH'] = self.pool_config['__path__']
+                env['PYTHONPATH'] = '.'
                 proc = await asyncio.create_subprocess_exec(
                     *final_args,
                     stdout=subprocess.PIPE,
