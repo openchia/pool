@@ -36,7 +36,7 @@ async def fcm_blocks_farmed(absorbeb_coins):
     farmers = set()
     for coin, farmer_record in absorbeb_coins:
         farmed_heights.append(
-            str(int.from_bytes(bytes(coin['coin']['parent_coin_info'])[16:], 'big'))
+            str(int.from_bytes(bytes.fromhex(coin['coin']['parent_coin_info'][2:])[16:], 'big'))
         )
         farmers.add(farmer_record['name'] or farmer_record['launcher_id'])
         if farmer_record['fcm_token']:
@@ -47,7 +47,7 @@ async def fcm_blocks_farmed(absorbeb_coins):
 
     push_service = FCMNotification(api_key=config['hook_fcm_absorb']['api_key'])
 
-    push_service.notify_multiple_devices(
+    result = push_service.notify_multiple_devices(
         registration_ids=list(fcm_tokens),
         message_title='OpenChia.io Blocks',
         message_body=f"New block(s) farmed! {coins_blocks}. Farmed by {farmed_by}.",

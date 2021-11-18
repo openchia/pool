@@ -331,12 +331,13 @@ class Pool:
 
         for hook in hooks:
 
-            if not os.path.exists(hook):
+            hook = shlex.split(hook)
+            if not os.path.exists(hook[0]):
                 logger.debug('Hook %r does not exist', hook)
                 continue
 
             final_args = tuple(
-                shlex.split(hook) + [name.upper()] + [json.dumps(dump(i)) for i in args]
+                hook + [name.upper()] + [json.dumps(dump(i)) for i in args]
             )
 
             async def run():
