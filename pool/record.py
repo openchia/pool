@@ -24,3 +24,5 @@ class FarmerRecord(Streamable):
     is_pool_member: bool  # If the farmer leaves the pool, this gets set to False
     email: str
     estimated_size: uint64
+    name: str
+    fcm_token: str
