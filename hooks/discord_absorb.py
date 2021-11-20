@@ -16,13 +16,17 @@ async def discord_blocks_farmed(absorbeb_coins):
     config = load_config()
     absorbeb_coins = json.loads(absorbeb_coins.strip())
 
-    coins = []
+    farmed_heights = []
     farmers = set()
     for coin, farmer_record in absorbeb_coins:
-        coins.append(coin)
-        farmers.add(farmer_record['launcher_id'])
+        farmed_heights.append(
+            str(int.from_bytes(bytes.fromhex(
+                coin['coin']['parent_coin_info'][2:])[16:], 'big'
+            ))
+        )
+        farmers.add(farmer_record['name'] or farmer_record['launcher_id'])
 
-    coins_blocks = ', '.join([f'#{c["confirmed_block_index"]}' for c in coins])
+    coins_blocks = ', '.join([f'#{i}' for i in farmed_heights])
     farmed_by = ', '.join(farmers)
 
     async with aiohttp.request('POST', config['hook_discord_absorb']['url'], json={
