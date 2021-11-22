@@ -333,33 +333,33 @@ class Pool:
 
             hook = shlex.split(hook)
             if not os.path.exists(hook[0]):
-                logger.debug('Hook %r does not exist', hook)
+                logger.error('Hook %r does not exist', hook)
                 continue
 
             final_args = tuple(
                 hook + [name.upper()] + [json.dumps(dump(i)) for i in args]
             )
 
-            async def run():
-                env = os.environ.copy()
-                env['CONFIG_PATH'] = self.pool_config['__path__']
-                env['PYTHONPATH'] = '.'
-                proc = await asyncio.create_subprocess_exec(
-                    *final_args,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    env=env,
-                )
-                try:
-                    stdout, stderr = await asyncio.wait_for(proc.communicate(), 30)
-                except asyncio.TimeoutError:
-                    await proc.kill()
-                    logger.warning('Hook %r killed after 30 seconds', hook)
-                    stdout, stderr = await proc.communicate()
-                if proc.returncode != 0:
-                    logger.warning('Hook %r returned %d: %r', hook, proc.returncode, stdout)
+            asyncio.ensure_future(self._run_hook_proc(hook, final_args))
 
-            asyncio.ensure_future(run())
+    async def _run_hook_proc(self, hook, final_args):
+        env = os.environ.copy()
+        env['CONFIG_PATH'] = self.pool_config['__path__']
+        env['PYTHONPATH'] = '.'
+        proc = await asyncio.create_subprocess_exec(
+            *final_args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            env=env,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), 30)
+        except asyncio.TimeoutError:
+            await proc.kill()
+            stdout, stderr = await proc.communicate()
+            logger.warning('Hook %r killed after 30 seconds: %r', hook, stdout)
+        if proc.returncode != 0:
+            logger.warning('Hook %r returned %d: %r', hook, proc.returncode, stdout)
 
     @task_exception
     async def get_peak_loop(self):
