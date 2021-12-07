@@ -405,6 +405,14 @@ class PgsqlPoolStore(AbstractPoolStore):
         if not rv:
             return None
         return await self.get_farmer_record(bytes32(bytes.fromhex(rv[0][0])))
+    
+    async def singleton_exists(self, launcher_id: bytes32) -> Optional[bytes32]:
+        rv = await self._execute('SELECT singleton_name FROM singleton WHERE launcher_id = %s LIMIT 1', 
+            (launcher_id.hex(),)
+        )
+        if not rv:
+            return None
+        return True
 
     async def add_payout(self, coin_records, pool_puzzle_hash, fee_puzzle_hash, amount, pool_fee, referral, payment_targets) -> int:
 
