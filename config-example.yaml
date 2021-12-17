@@ -42,6 +42,9 @@ server:
   server_use_ssl: false
   server_ssl_crt: config/ssl/domain/domain_srv.crt
   server_ssl_key: config/ssl/domain/domain_srv.key
+
+#database_dsn: postgresql://pooldb:pooldbpassword@postgresql:5432/pooldb?sslmode=require
+
 #hooks:
 #  absorb:
 #    - ./hooks/discord_absorb.py
