@@ -1049,6 +1049,11 @@ class Pool:
             self.scan_p2_singleton_puzzle_hashes.add(p2_singleton_puzzle_hash)
             await self.store.add_farmer_record(farmer_record, metadata)
 
+            # Add new farmer singleton to the list of known singleton puzzles            
+            singleton_state_tuple: Optional[
+                Tuple[CoinSpend, PoolState, bool]
+            ] = await self.get_and_validate_singleton_state(request.payload.launcher_id)
+
             return PostFarmerResponse(self.welcome_message).to_json_dict()
 
     async def update_farmer(self, request: PutFarmerRequest, metadata: RequestMetadata) -> Dict:
@@ -1187,6 +1192,7 @@ class Pool:
         if farmer_rec is not None and (
             farmer_rec.singleton_tip != buried_singleton_tip
             or farmer_rec.singleton_tip_state != buried_singleton_tip_state
+            or await self.store.singleton_exists(launcher_id) is None
         ):
             # This means the singleton has been changed in the blockchain (either by us or someone else). We
             # still keep track of this singleton if the farmer has changed to a different pool, in case they
