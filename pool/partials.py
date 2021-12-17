@@ -33,11 +33,12 @@ class PartialsInterval(object):
 
         return next(self.additions)
 
-    def add_partials(self, pi):
-        self.partials += pi.partials
-        self.points += pi.points
-        self.partials.sort()
+    def add_partials_list(self, partials_list):
+        for pi in partials_list:
+            self.partials += pi.partials
+            self.points += pi.points
         self.last_update = int(time.time())
+        self.partials.sort()
 
     def changed_recently(self, time):
         if self.last_update > time - 60 * 10:
@@ -186,7 +187,9 @@ class Partials(object):
             async with self.cache:
                 now = int(time.time())
                 to_update = []
-                self.cache.all.clear()
+
+                self.cache.all.clear()                
+
                 for launcher_id, points_interval in list(self.cache.items()):
                     if not points_interval.changed_recently(now):
                         before = points_interval.points
@@ -194,7 +197,8 @@ class Partials(object):
                             del self.cache[launcher_id]
                         if points_interval.points != before:
                             to_update.append(launcher_id)
-                    self.cache.all.add_partials(points_interval)
+                            
+                self.cache.all.add_partials_list(list(self.cache.values()))
 
             now = int(time.time())
             for i in to_update:
