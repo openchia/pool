@@ -37,7 +37,7 @@ class PartialsInterval(object):
         for pi in partials_list:
             self.partials += pi.partials
             self.points += pi.points
-            self.last_update = int(time.time())
+        self.last_update = int(time.time())
         self.partials.sort()
 
     def changed_recently(self, time):
@@ -188,8 +188,7 @@ class Partials(object):
                 now = int(time.time())
                 to_update = []
 
-                self.cache.all.clear()
-                self.cache.all.add_partials_list(list(self.cache.values()))
+                self.cache.all.clear()                
 
                 for launcher_id, points_interval in list(self.cache.items()):
                     if not points_interval.changed_recently(now):
@@ -198,6 +197,8 @@ class Partials(object):
                             del self.cache[launcher_id]
                         if points_interval.points != before:
                             to_update.append(launcher_id)
+                            
+                self.cache.all.add_partials_list(list(self.cache.values()))
 
             now = int(time.time())
             for i in to_update:
