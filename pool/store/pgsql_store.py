@@ -33,8 +33,8 @@ class PgsqlPoolStore(AbstractPoolStore):
                     return await cursor.fetchall()
 
     async def connect(self):
-        if self.pool_config["database_dsn"]:
-            self.pool = await aiopg.create_pool(self.pool_config["database_dsn"])
+        if dsn := self.pool_config.get('database_dsn'):
+            self.pool = await aiopg.create_pool(dsn)
         else:
             self.pool = await aiopg.create_pool(
                 f'host={self.pool_config["database_host"]} '
@@ -409,10 +409,11 @@ class PgsqlPoolStore(AbstractPoolStore):
         if not rv:
             return None
         return await self.get_farmer_record(bytes32(bytes.fromhex(rv[0][0])))
-    
+
     async def singleton_exists(self, launcher_id: bytes32) -> Optional[bytes32]:
-        rv = await self._execute('SELECT singleton_name FROM singleton WHERE launcher_id = %s LIMIT 1', 
-            (launcher_id.hex(),)
+        rv = await self._execute(
+            'SELECT singleton_name FROM singleton WHERE launcher_id = %s LIMIT 1',
+            (launcher_id.hex(), ),
         )
         if not rv:
             return None
