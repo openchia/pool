@@ -27,4 +27,4 @@ class FarmerRecord(Streamable):
     estimated_size: uint64
     name: Optional[str]
     fcm_token: Optional[str]
-    push_missing_partials_hours: Optional[int]
+    push_missing_partials_hours: Optional[uint64]
