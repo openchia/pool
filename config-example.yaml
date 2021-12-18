@@ -57,3 +57,5 @@ server:
 #  api_key: foo
 #hook_missing_partials:
 #  message_path: ./hooks/missing_partials_example.txt
+#  push_message: "We have identified your launcher id %(launcher_id)s has stopped sending any partials to our pool in the last hour!"
+#  fcm_api_key: foo
