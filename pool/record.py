@@ -28,3 +28,4 @@ class FarmerRecord(Streamable):
     name: Optional[str]
     fcm_token: Optional[str]
     push_missing_partials_hours: Optional[uint64]
+    push_block_farmed: Optional[bool]
