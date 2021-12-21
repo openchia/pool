@@ -378,11 +378,13 @@ class PgsqlPoolStore(AbstractPoolStore):
         else:
             luck = 100
 
+        globalinfo = await self.get_globalinfo()
+
         await self._execute(
             "INSERT INTO block ("
-            " name, singleton, timestamp, farmed_height, confirmed_block_index, puzzle_hash, amount, farmed_by_id, estimate_to_win, pool_space, luck, absorb_fee"
+            " name, singleton, timestamp, farmed_height, confirmed_block_index, puzzle_hash, amount, farmed_by_id, estimate_to_win, pool_space, luck, absorb_fee, xch_current_price"
             ") VALUES ("
-            " %s,   %s,        %s,        %s,            %s,                    %s,          %s,     %s,           %s,              %s,         %s,   %s"
+            " %s,   %s,        %s,        %s,            %s,                    %s,          %s,     %s,           %s,              %s,         %s,   %s,         %s"
             ")",
             (
                 reward_record.name.hex(),
@@ -397,6 +399,7 @@ class PgsqlPoolStore(AbstractPoolStore):
                 pool_space,
                 luck,
                 absorb_fee,
+                globalinfo['xch_current_price'],
             )
         )
 
@@ -492,11 +495,26 @@ class PgsqlPoolStore(AbstractPoolStore):
         ids = []
         for targets in payment_targets.values():
             ids += [str(i['id']) for i in targets]
+
+        globalinfo = await self.get_globalinfo()
+
+        rv = await self._execute(
+            "INSERT INTO transaction ("
+            " transaction, xch_current_price"
+            ") VALUES ("
+            " %s,          %s"
+            ") RETURNING id",
+            (
+                transaction.name.hex(),
+                globalinfo['xch_current_price'],
+            ),
+        )
+        tx_id = rv[0][0]
         await self._execute(
-            "UPDATE payout_address SET transaction = %s WHERE id IN ({})".format(
+            "UPDATE payout_address SET transaction_id = %s WHERE id IN ({})".format(
                 ', '.join(ids)
             ),
-            (transaction.name.hex(),),
+            (tx_id,),
         )
 
     async def get_pending_payments_coins(self, pool_puzzle_hash: bytes32):
@@ -504,8 +522,9 @@ class PgsqlPoolStore(AbstractPoolStore):
             i[0]
             for i in await self._execute(
                 'WITH unconfirmed AS ('
-                ' SELECT DISTINCT payout_id FROM payout_address '
-                '  WHERE pool_puzzle_hash = %s AND confirmed_block_index IS NULL'
+                ' SELECT DISTINCT payout_id FROM payout_address JOIN transaction t '
+                '  ON p.transaction_id = t.id '
+                '  WHERE pool_puzzle_hash = %s AND t.confirmed_block_index IS NULL'
                 ') SELECT name FROM coin_reward c JOIN unconfirmed u ON c.payout_id = u.payout_id',
                 (pool_puzzle_hash.hex(), ),
             )
@@ -525,7 +544,7 @@ class PgsqlPoolStore(AbstractPoolStore):
         payment_targets_per_tx = defaultdict(lambda: defaultdict(list))
         payout_round = None
         for i in await self._execute(
-            "SELECT id, transaction, payout_id, puzzle_hash, amount, payout_round, fee FROM payout_address WHERE pool_puzzle_hash = %s AND confirmed_block_index IS NULL ORDER BY payout_round ASC, fee DESC, id ASC",
+            "SELECT p.id, t.transaction, p.payout_id, p.puzzle_hash, p.amount, p.payout_round, p.fee FROM payout_address p LEFT JOIN transaction t ON p.transaction_id = t.id WHERE p.pool_puzzle_hash = %s AND t.confirmed_block_index IS NULL ORDER BY p.payout_round ASC, p.fee DESC, p.id ASC",
             (pool_puzzle_hash.hex(), ),
         ):
             # Only get payout addresses for the same round
@@ -548,7 +567,7 @@ class PgsqlPoolStore(AbstractPoolStore):
 
     async def confirm_transaction(self, transaction, payment_targets):
         await self._execute(
-            "UPDATE payout_address SET confirmed_block_index = %s WHERE transaction = %s",
+            "UPDATE transaction SET confirmed_block_index = %s WHERE transaction = %s",
             (int(transaction.confirmed_at_height), transaction.name.hex()),
         )
         for targets in payment_targets.values():
@@ -560,7 +579,7 @@ class PgsqlPoolStore(AbstractPoolStore):
 
     async def remove_transaction(self, tx_id: bytes32):
         await self._execute(
-            "UPDATE payout_address SET transaction = NULL WHERE transaction = %s",
+            "DELETE transaction WHERE transaction = %s",
             (tx_id.hex(), ),
         )
 
@@ -606,6 +625,25 @@ class PgsqlPoolStore(AbstractPoolStore):
                 sql.append(f'{i} = %s')
                 args.append(attrs[i])
         await self._execute(f"UPDATE globalinfo SET {', '.join(sql)}", args)
+
+    async def get_globalinfo(self) -> Dict:
+        rv = await self._execute(
+            "SELECT"
+            " xch_current_price,"
+            " blockchain_height,"
+            " blockchain_space,"
+            " blockchain_avg_block_time,"
+            " wallets"
+            " FROM globalinfo WHERE id = 1"
+        )
+        rv = rv[0]
+        return {
+            'xch_current_price': rv[0],
+            'blockchain_height': rv[1],
+            'blockchain_space': rv[2],
+            'blockchain_avg_block_time': rv[3],
+            'wallets': rv[4],
+        }
 
     async def get_referrals(self):
         # TODO: only get launchers id getting paid
