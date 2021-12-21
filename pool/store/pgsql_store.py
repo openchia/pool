@@ -399,7 +399,7 @@ class PgsqlPoolStore(AbstractPoolStore):
                 pool_space,
                 luck,
                 absorb_fee,
-                globalinfo['xch_current_price'],
+                json.dumps(globalinfo['xch_current_price']),
             )
         )
 
@@ -506,7 +506,7 @@ class PgsqlPoolStore(AbstractPoolStore):
             ") RETURNING id",
             (
                 transaction.name.hex(),
-                globalinfo['xch_current_price'],
+                json.dumps(globalinfo['xch_current_price']),
             ),
         )
         tx_id = rv[0][0]
