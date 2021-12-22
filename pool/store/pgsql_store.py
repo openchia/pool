@@ -568,7 +568,7 @@ class PgsqlPoolStore(AbstractPoolStore):
             i[0]
             for i in await self._execute(
                 'WITH unconfirmed AS ('
-                ' SELECT DISTINCT payout_id FROM payout_address p JOIN transaction t '
+                ' SELECT DISTINCT payout_id FROM payout_address p LEFT JOIN transaction t '
                 '  ON p.transaction_id = t.id '
                 '  WHERE pool_puzzle_hash = %s AND t.confirmed_block_index IS NULL'
                 ') SELECT name FROM coin_reward c JOIN unconfirmed u ON c.payout_id = u.payout_id',
