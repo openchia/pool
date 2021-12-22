@@ -624,6 +624,15 @@ class PgsqlPoolStore(AbstractPoolStore):
                 )
 
     async def remove_transaction(self, tx_id: bytes32):
+        rowid = await self._execute(
+            "SELECT id FROM transaction WHERE transaction = %s",
+            (tx_id.hex(), ),
+        )
+        rowid = rowid[0][0]
+        await self._execute(
+            "UPDATE payout_address SET transaction_id = NULL WHERE transaction_id = %s",
+            (rowid, ),
+        )
         await self._execute(
             "DELETE FROM transaction WHERE transaction = %s",
             (tx_id.hex(), ),
