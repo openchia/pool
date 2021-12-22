@@ -441,6 +441,7 @@ class PgsqlPoolStore(AbstractPoolStore):
 
         payout_id = None
         coin_rewards_added = []
+        payout_addresses_ids = []
         try:
             rv = await self._execute(
                 "INSERT INTO payout "
@@ -459,7 +460,7 @@ class PgsqlPoolStore(AbstractPoolStore):
                     ')',
                     (coin_record.name.hex(), payout_id),
                 )
-                coin_rewards_added.append(coin_record.name.hex())
+                coin_rewards_added.append(coin_record)
 
                 await self._execute(
                     "UPDATE block SET payout_id = %s WHERE singleton = %s",
@@ -473,7 +474,6 @@ class PgsqlPoolStore(AbstractPoolStore):
             pool_fee_per_round = int(pool_fee / rounds)
 
             payout_round = 1
-            payout_addresses_ids = []
             for idx, i in enumerate(payment_targets):
 
                 if idx % max_additions == 0:
@@ -519,10 +519,14 @@ class PgsqlPoolStore(AbstractPoolStore):
                         "DELETE FROM payout WHERE id = %s",
                         (payout_id,),
                     )
-                for coin_name in coin_rewards_added:
+                for coin_record in coin_rewards_added:
+                    await self._execute(
+                        "UPDATE block SET payout_id = %s WHERE singleton = %s",
+                        (payout_id, coin_record.coin.parent_coin_info.hex(),),
+                    )
                     await self._execute(
                         "DELETE FROM coin_reward WHERE name = %s",
-                        (coin_name,),
+                        (coin_record.name.hex(),),
                     )
                 for pid in payout_addresses_ids:
                     await self._execute(
