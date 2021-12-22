@@ -426,7 +426,16 @@ class PgsqlPoolStore(AbstractPoolStore):
             return None
         return True
 
-    async def add_payout(self, coin_records, pool_puzzle_hash, fee_puzzle_hash, amount, pool_fee, referral, payment_targets) -> int:
+    async def add_payout(
+        self,
+        coin_records,
+        pool_puzzle_hash,
+        fee_puzzle_hash,
+        amount,
+        pool_fee,
+        referral,
+        payment_targets
+    ) -> int:
 
         assert len(payment_targets) > 0
 
@@ -456,6 +465,53 @@ class PgsqlPoolStore(AbstractPoolStore):
                     "UPDATE block SET payout_id = %s WHERE singleton = %s",
                     (payout_id, coin_record.coin.parent_coin_info.hex()),
                 )
+
+            max_additions = self.pool_config["max_additions_per_transaction"]
+            rounds = math.ceil(len(payment_targets) / max_additions)
+
+            # We can lose one mojo here due to rounding, but not important
+            pool_fee_per_round = int(pool_fee / rounds)
+
+            payout_round = 1
+            payout_addresses_ids = []
+            for idx, i in enumerate(payment_targets):
+
+                if idx % max_additions == 0:
+                    payout_round += 1
+                    rv = await self._execute(
+                        "INSERT INTO payout_address "
+                        "(payout_id, payout_round, fee, tx_fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction_id) "
+                        "VALUES "
+                        "(%s,        %s,           true, 0,  %s,         %s,               NULL,        %s,     NULL,        0,               NULL) "
+                        "RETURNING id",
+                        (payout_id, payout_round, fee_puzzle_hash.hex(), pool_puzzle_hash.hex(), pool_fee_per_round),
+                    )
+                    payout_addresses_ids.append(rv[0][0])
+
+                rv = await self._execute(
+                    "SELECT launcher_id FROM farmer WHERE payout_instructions = %s",
+                    (i["puzzle_hash"].hex(),),
+                )
+                if rv and rv[0]:
+                    farmer = "'" + rv[0][0] + "'"
+                else:
+                    farmer = 'NULL'
+                rv = await self._execute(
+                    "INSERT INTO payout_address "
+                    "(payout_id, payout_round, fee, tx_fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction_id) "
+                    "VALUES "
+                    "(%%s,       %%s,          false, %%s,  %%s,         %%s,              %s,          %%s,    %%s,         %%s,             NULL) "
+                    "RETURNING id" % (farmer,),
+                    (payout_id, payout_round, i.get('tx_fee') or 0, i["puzzle_hash"].hex(), pool_puzzle_hash.hex(), i["amount"], i.get('referral'), i.get('referral_amount') or 0),
+                )
+                payout_addresses_ids.append(rv[0][0])
+                if referral := i.get('referral'):
+                    # FIXME: rollback referral
+                    await self._execute(
+                        "UPDATE referral_referral SET total_income = total_income + %s WHERE id = %s",
+                        (i.get('referral_amount') or 0, referral),
+                    )
+            return payout_id
         except Exception as e:
             try:
                 if payout_id:
@@ -468,50 +524,14 @@ class PgsqlPoolStore(AbstractPoolStore):
                         "DELETE FROM coin_reward WHERE name = %s",
                         (coin_name,),
                     )
+                for pid in payout_addresses_ids:
+                    await self._execute(
+                        "DELETE FROM payout_address WHERE id = %s",
+                        (pid,),
+                    )
             except Exception:
                 logger.error('Failed to rollback', exc_info=True)
             raise e
-
-        max_additions = self.pool_config["max_additions_per_transaction"]
-        rounds = math.ceil(len(payment_targets) / max_additions)
-
-        # We can lose one mojo here due to rounding, but not important
-        pool_fee_per_round = int(pool_fee / rounds)
-
-        payout_round = 1
-        for idx, i in enumerate(payment_targets):
-
-            if idx % max_additions == 0:
-                payout_round += 1
-                await self._execute(
-                    "INSERT INTO payout_address "
-                    "(payout_id, payout_round, fee, tx_fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction_id) "
-                    "VALUES "
-                    "(%s,        %s,           true, 0,  %s,         %s,               NULL,        %s,     NULL,        0,               NULL)",
-                    (payout_id, payout_round, fee_puzzle_hash.hex(), pool_puzzle_hash.hex(), pool_fee_per_round),
-                )
-
-            rv = await self._execute(
-                "SELECT launcher_id FROM farmer WHERE payout_instructions = %s",
-                (i["puzzle_hash"].hex(),),
-            )
-            if rv and rv[0]:
-                farmer = "'" + rv[0][0] + "'"
-            else:
-                farmer = 'NULL'
-            await self._execute(
-                "INSERT INTO payout_address "
-                "(payout_id, payout_round, fee, tx_fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction_id) "
-                "VALUES "
-                "(%%s,       %%s,          false, %%s,  %%s,         %%s,              %s,          %%s,    %%s,         %%s,             NULL)" % (farmer,),
-                (payout_id, payout_round, i.get('tx_fee') or 0, i["puzzle_hash"].hex(), pool_puzzle_hash.hex(), i["amount"], i.get('referral'), i.get('referral_amount') or 0),
-            )
-            if referral := i.get('referral'):
-                await self._execute(
-                    "UPDATE referral_referral SET total_income = total_income + %s WHERE id = %s",
-                    (i.get('referral_amount') or 0, referral),
-                )
-        return payout_id
 
     async def add_transaction(self, transaction, payment_targets) -> None:
         ids = []
