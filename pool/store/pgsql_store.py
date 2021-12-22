@@ -431,7 +431,7 @@ class PgsqlPoolStore(AbstractPoolStore):
         assert len(payment_targets) > 0
 
         payout_id = None
-        coin_reward_ids = []
+        coin_rewards_added = []
         try:
             rv = await self._execute(
                 "INSERT INTO payout "
@@ -442,15 +442,15 @@ class PgsqlPoolStore(AbstractPoolStore):
             )
             payout_id = rv[0][0]
             for coin_record in coin_records:
-                cr_id = await self._execute(
+                await self._execute(
                     'INSERT INTO coin_reward ('
                     ' name, payout_id'
                     ') VALUES ('
                     ' %s,   %s'
-                    ') RETURNING id',
+                    ')',
                     (coin_record.name.hex(), payout_id),
                 )
-                coin_reward_ids.append(cr_id[0][0])
+                coin_rewards_added.append(coin_record.name.hex())
 
                 await self._execute(
                     "UPDATE block SET payout_id = %s WHERE singleton = %s",
@@ -463,10 +463,10 @@ class PgsqlPoolStore(AbstractPoolStore):
                         "DELETE FROM payout WHERE id = %s",
                         (payout_id,),
                     )
-                for cr_id in coin_reward_ids:
+                for coin_name in coin_rewards_added:
                     await self._execute(
-                        "DELETE FROM coin_reward WHERE id = %s",
-                        (cr_id,),
+                        "DELETE FROM coin_reward WHERE name = %s",
+                        (coin_name,),
                     )
             except Exception:
                 logger.error('Failed to rollback', exc_info=True)
