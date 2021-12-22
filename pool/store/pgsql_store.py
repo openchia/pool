@@ -385,7 +385,7 @@ class PgsqlPoolStore(AbstractPoolStore):
 
         await self._execute(
             "INSERT INTO block ("
-            " name, singleton, timestamp, farmed_height, confirmed_block_index, puzzle_hash, amount, farmed_by_id, estimate_to_win, pool_space, luck, absorb_fee, xch_current_price"
+            " name, singleton, timestamp, farmed_height, confirmed_block_index, puzzle_hash, amount, farmed_by_id, estimate_to_win, pool_space, luck, absorb_fee, xch_price"
             ") VALUES ("
             " %s,   %s,        %s,        %s,            %s,                    %s,          %s,     %s,           %s,              %s,         %s,   %s,         %s"
             ")",
@@ -546,7 +546,7 @@ class PgsqlPoolStore(AbstractPoolStore):
 
         rv = await self._execute(
             "INSERT INTO transaction ("
-            " transaction, xch_current_price"
+            " transaction, xch_price"
             ") VALUES ("
             " %s,          %s"
             ") RETURNING id",
