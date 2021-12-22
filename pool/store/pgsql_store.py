@@ -625,7 +625,7 @@ class PgsqlPoolStore(AbstractPoolStore):
 
     async def remove_transaction(self, tx_id: bytes32):
         await self._execute(
-            "DELETE transaction WHERE transaction = %s",
+            "DELETE FROM transaction WHERE transaction = %s",
             (tx_id.hex(), ),
         )
 
