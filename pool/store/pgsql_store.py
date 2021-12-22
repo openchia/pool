@@ -1,6 +1,7 @@
 from collections import defaultdict
 from decimal import Decimal
 import json
+import logging
 import math
 from typing import Optional, Set, List, Tuple, Dict
 
@@ -17,6 +18,8 @@ from chia.util.ints import uint64
 from .abstract import AbstractPoolStore
 from ..record import FarmerRecord
 from ..util import RequestMetadata
+
+logger = logging.getLogger('pgsql_store')
 
 
 class PgsqlPoolStore(AbstractPoolStore):
@@ -427,28 +430,47 @@ class PgsqlPoolStore(AbstractPoolStore):
 
         assert len(payment_targets) > 0
 
-        rv = await self._execute(
-            "INSERT INTO payout "
-            "(datetime, amount, fee, referral) VALUES "
-            "(NOW(),    %s,     %s,  %s) "
-            "RETURNING id",
-            (amount, pool_fee, referral),
-        )
-        payout_id = rv[0][0]
-        for coin_record in coin_records:
-            await self._execute(
-                'INSERT INTO coin_reward ('
-                ' name, payout_id'
-                ') VALUES ('
-                ' %s,   %s'
-                ')',
-                (coin_record.name.hex(), payout_id),
+        payout_id = None
+        coin_reward_ids = []
+        try:
+            rv = await self._execute(
+                "INSERT INTO payout "
+                "(datetime, amount, fee, referral) VALUES "
+                "(NOW(),    %s,     %s,  %s) "
+                "RETURNING id",
+                (amount, pool_fee, referral),
             )
+            payout_id = rv[0][0]
+            for coin_record in coin_records:
+                cr_id = await self._execute(
+                    'INSERT INTO coin_reward ('
+                    ' name, payout_id'
+                    ') VALUES ('
+                    ' %s,   %s'
+                    ') RETURNING id',
+                    (coin_record.name.hex(), payout_id),
+                )
+                coin_reward_ids.append(cr_id[0][0])
 
-            await self._execute(
-                "UPDATE block SET payout_id = %s WHERE singleton = %s",
-                (payout_id, coin_record.coin.parent_coin_info.hex()),
-            )
+                await self._execute(
+                    "UPDATE block SET payout_id = %s WHERE singleton = %s",
+                    (payout_id, coin_record.coin.parent_coin_info.hex()),
+                )
+        except Exception as e:
+            try:
+                if payout_id:
+                    await self._execute(
+                        "DELETE FROM payout WHERE id = %s",
+                        (payout_id,),
+                    )
+                for cr_id in coin_reward_ids:
+                    await self._execute(
+                        "DELETE FROM coin_reward WHERE id = %s",
+                        (cr_id,),
+                    )
+            except Exception:
+                logger.error('Failed to rollback', exc_info=True)
+            raise e
 
         max_additions = self.pool_config["max_additions_per_transaction"]
         rounds = math.ceil(len(payment_targets) / max_additions)
@@ -463,7 +485,7 @@ class PgsqlPoolStore(AbstractPoolStore):
                 payout_round += 1
                 await self._execute(
                     "INSERT INTO payout_address "
-                    "(payout_id, payout_round, fee, tx_fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction) "
+                    "(payout_id, payout_round, fee, tx_fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction_id) "
                     "VALUES "
                     "(%s,        %s,           true, 0,  %s,         %s,               NULL,        %s,     NULL,        0,               NULL)",
                     (payout_id, payout_round, fee_puzzle_hash.hex(), pool_puzzle_hash.hex(), pool_fee_per_round),
@@ -479,9 +501,9 @@ class PgsqlPoolStore(AbstractPoolStore):
                 farmer = 'NULL'
             await self._execute(
                 "INSERT INTO payout_address "
-                "(payout_id, payout_round, fee, tx_fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction) "
+                "(payout_id, payout_round, fee, tx_fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction_id) "
                 "VALUES "
-                "(%%s,       %%s,          false, %%s,  %%s,       %%s,              %s,          %%s,    %%s,         %%s,              NULL)" % (farmer,),
+                "(%%s,       %%s,          false, %%s,  %%s,         %%s,              %s,          %%s,    %%s,         %%s,             NULL)" % (farmer,),
                 (payout_id, payout_round, i.get('tx_fee') or 0, i["puzzle_hash"].hex(), pool_puzzle_hash.hex(), i["amount"], i.get('referral'), i.get('referral_amount') or 0),
             )
             if referral := i.get('referral'):
