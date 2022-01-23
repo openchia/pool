@@ -661,7 +661,7 @@ class PgsqlPoolStore(AbstractPoolStore):
     async def scrub_pplns(self, start_time: int) -> None:
         await self._execute(
             "UPDATE farmer SET points_pplns = 0, share_pplns = 0 WHERE launcher_id NOT IN ("
-            "SELECT DISTINCT launcher_id FROM partial WHERE timestamp >= %s"
+            "SELECT DISTINCT launcher_id FROM partial WHERE timestamp >= %s AND error IS NULL"
             ")",
             (start_time,)
         )

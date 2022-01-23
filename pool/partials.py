@@ -178,7 +178,7 @@ class Partials(object):
         if time_target is None:
             time_target = self.pool_config['time_target']
         estimated_size = int(points / (time_target * 1.0881482400062102e-15))
-        if self.config['full_node']['selected_network'] == 'testnet7':
+        if self.config['full_node']['selected_network'] in ('testnet7', 'testnet10'):
             estimated_size = int(estimated_size / 14680000)
         return estimated_size
 
@@ -188,7 +188,7 @@ class Partials(object):
                 now = int(time.time())
                 to_update = []
 
-                self.cache.all.clear()                
+                self.cache.all.clear()
 
                 for launcher_id, points_interval in list(self.cache.items()):
                     if not points_interval.changed_recently(now):
@@ -197,7 +197,7 @@ class Partials(object):
                             del self.cache[launcher_id]
                         if points_interval.points != before:
                             to_update.append(launcher_id)
-                            
+
                 self.cache.all.add_partials_list(list(self.cache.values()))
 
             now = int(time.time())
@@ -299,7 +299,8 @@ class Partials(object):
         if error is None:
             await self.cache.add(partial_payload.launcher_id.hex(), timestamp, difficulty)
 
-        if next(self.additions) % 10 == 0:
+        # FIXME: better parameter to run scrub
+        if next(self.additions) % 20 == 0:
             await self.scrub()
 
     async def get_recent_partials(self, launcher_id: bytes32, number_of_partials: int):
