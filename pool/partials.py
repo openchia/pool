@@ -211,6 +211,23 @@ class Partials(object):
         etw = int(await get_average_block_time(None) / proportion) if proportion else -1
         return pool_size, etw
 
+    async def remove_old_partials_loop(self):
+        while True:
+            try:
+                # Get timestamp of the first block before one week ago.
+                # We will keep partials for about one week.
+                old_timestamp = await self.store.get_block_timestamp(
+                    int(time.time() - 7 * 24 * 60 * 60)
+                )
+                await self.store.remove_partials(old_timestamp)
+            except asyncio.CancelledError:
+                logger.info('Cancelled remove_old_partials_loop')
+                break
+            except Exception:
+                logger.error('Unexpected error in remove_old_partials_loop', exc_info=True)
+            # Run once a day
+            await asyncio.sleep(60 * 60 * 24)
+
     async def pool_estimated_size_loop(self):
         while True:
             try:

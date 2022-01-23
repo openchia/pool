@@ -193,6 +193,7 @@ class Pool:
         self.create_payment_loop_tasks: List[asyncio.Task] = []
         self.submit_payment_loop_tasks: List[asyncio.Task] = []
         self.get_peak_loop_task: Optional[asyncio.Task] = None
+        self.remove_old_partials_loop_tasl: Optional[asyncio.Task] = None
         self.pool_estimated_size_loop_task: Optional[asyncio.Task] = None
         self.missing_partials_loop_task: Optional[asyncio.Task] = None
         self.xchprice_loop_task: Optional[asyncio.Task] = None
@@ -266,6 +267,9 @@ class Pool:
                 asyncio.create_task(self.submit_payment_loop(wallet))
             )
         self.get_peak_loop_task = asyncio.create_task(self.get_peak_loop())
+        self.remove_old_partials_loop_task = asyncio.create_task(
+            self.partials.remove_old_partials_loop()
+        )
         self.pool_estimated_size_loop_task = asyncio.create_task(
             self.partials.pool_estimated_size_loop()
         )
@@ -289,6 +293,8 @@ class Pool:
             submit_payment_loop_task.cancel()
         if self.get_peak_loop_task is not None:
             self.get_peak_loop_task.cancel()
+        if self.remove_old_partials_loop_task is not None:
+            self.remove_old_partials_loop_tasl.cancel()
         if self.pool_estimated_size_loop_task is not None:
             self.pool_estimated_size_loop_task.cancel()
         if self.launchers_singleton_state_task is not None:
@@ -1051,7 +1057,7 @@ class Pool:
             self.scan_p2_singleton_puzzle_hashes.add(p2_singleton_puzzle_hash)
             await self.store.add_farmer_record(farmer_record, metadata)
 
-            # Add new farmer singleton to the list of known singleton puzzles            
+            # Add new farmer singleton to the list of known singleton puzzles
             singleton_state_tuple: Optional[
                 Tuple[CoinSpend, PoolState, bool]
             ] = await self.get_and_validate_singleton_state(request.payload.launcher_id)

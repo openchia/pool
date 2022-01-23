@@ -713,3 +713,18 @@ class PgsqlPoolStore(AbstractPoolStore):
                 "WHERE active = true"
             )
         }
+
+    async def get_block_timestamp(self, before_timestamp: int):
+        # farmed_height is indexed, faster
+        rv = await self._execute(
+            "SELECT timestamp FROM block WHERE timestamp <= %s ORDER BY farmed_height DESC LIMIT 1",
+            (before_timestamp, ),
+        )
+        if rv:
+            return rv[0][0]
+
+    async def remove_partials(self, before_timestamp: int):
+        await self._execute(
+            "DELETE FROM partial WHERE timestamp <= %s",
+            (before_timestamp, ),
+        )
