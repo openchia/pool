@@ -219,7 +219,8 @@ class Partials(object):
                 old_timestamp = await self.store.get_block_timestamp(
                     int(time.time() - 7 * 24 * 60 * 60)
                 )
-                await self.store.remove_partials(old_timestamp)
+                rowcount = await self.store.remove_partials(old_timestamp)
+                logger.info('%d old partials deleted', rowcount)
             except asyncio.CancelledError:
                 logger.info('Cancelled remove_old_partials_loop')
                 break

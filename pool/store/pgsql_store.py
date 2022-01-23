@@ -34,6 +34,8 @@ class PgsqlPoolStore(AbstractPoolStore):
                 await cursor.execute(sql, args or [])
                 if sql.lower().startswith(('select', 'with')) or ' returning ' in sql.lower():
                     return await cursor.fetchall()
+                elif sql.lower().startswith('delete'):
+                    return cursor.rowcount
 
     async def connect(self):
         if dsn := self.pool_config.get('database_dsn'):
@@ -723,8 +725,9 @@ class PgsqlPoolStore(AbstractPoolStore):
         if rv:
             return rv[0][0]
 
-    async def remove_partials(self, before_timestamp: int):
-        await self._execute(
+    async def remove_partials(self, before_timestamp: int) -> int:
+        rowcount = await self._execute(
             "DELETE FROM partial WHERE timestamp <= %s",
             (before_timestamp, ),
         )
+        return rowcount
