@@ -964,6 +964,10 @@ class Pool:
                     await self.store.add_farmer_record(
                         FarmerRecord.from_json_dict(farmer_dict), None,
                     )
+                    # Reset PPLNS fields if left the pool
+                    await self.store.update_estimated_size_and_pplns(
+                        farmer_record.launcher_id.hex(), 0, 0, 0,
+                    )
                 await self.partials.remove_launcher(farmer_record.launcher_id)
                 return
 
