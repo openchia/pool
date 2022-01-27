@@ -100,7 +100,7 @@ class PgsqlPoolStore(AbstractPoolStore):
                 else:
                     if exists[1] and not farmer_record.is_pool_member:
                         left_at = ', left_at = NOW()'
-                    if not exists[1] and farmer_record.is_pool_member:
+                    elif not exists[1] and farmer_record.is_pool_member:
                         left_at = ', left_at = NULL'
                     else:
                         left_at = ''
