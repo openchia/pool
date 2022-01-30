@@ -404,7 +404,7 @@ class PgsqlPoolStore(AbstractPoolStore):
                 pool_space,
                 luck,
                 absorb_fee,
-                json.dumps(globalinfo['xch_current_price']),
+                json.dumps(globalinfo['xch_current_price']) if globalinfo else None,
             )
         )
 
@@ -554,7 +554,7 @@ class PgsqlPoolStore(AbstractPoolStore):
             ") RETURNING id",
             (
                 transaction.name.hex(),
-                json.dumps(globalinfo['xch_current_price']),
+                json.dumps(globalinfo['xch_current_price']) if globalinfo else None,
             ),
         )
         tx_id = rv[0][0]
@@ -693,6 +693,8 @@ class PgsqlPoolStore(AbstractPoolStore):
             " wallets"
             " FROM globalinfo WHERE id = 1"
         )
+        if not rv:
+            return None
         rv = rv[0]
         return {
             'xch_current_price': rv[0],
