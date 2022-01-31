@@ -72,6 +72,8 @@ class PgsqlPoolStore(AbstractPoolStore):
             row[14],
             row[15],
             row[16],
+            row[17],
+            row[18],
         )
 
     async def add_farmer_record(self, farmer_record: FarmerRecord, metadata: RequestMetadata):
@@ -82,8 +84,8 @@ class PgsqlPoolStore(AbstractPoolStore):
                 if not exists:
                     await cursor.execute(
                         "INSERT INTO farmer ("
-                        "launcher_id, p2_singleton_puzzle_hash, delay_time, delay_puzzle_hash, authentication_public_key, singleton_tip, singleton_tip_state, points, difficulty, payout_instructions, is_pool_member, estimated_size, points_pplns, share_pplns, joined_at, left_at, push_payment, push_block_farmed) VALUES ("
-                        "%s,          %s,                       %s,         %s,                %s,                        %s,            %s,                  0,      %s,         %s,                  %s,             0,              0,            0,           NOW(),     NULL,    false,        true)",
+                        "launcher_id, p2_singleton_puzzle_hash, delay_time, delay_puzzle_hash, authentication_public_key, singleton_tip, singleton_tip_state, points, difficulty, payout_instructions, is_pool_member, estimated_size, points_pplns, share_pplns, joined_at, left_at, push_payment, push_block_farmed, custom_difficulty, minimum_payout) VALUES ("
+                        "%s,          %s,                       %s,         %s,                %s,                        %s,            %s,                  0,      %s,         %s,                  %s,             0,              0,            0,           NOW(),     NULL,    false,        true,              NULL,              NULL)",
                         (
                             farmer_record.launcher_id.hex(),
                             farmer_record.p2_singleton_puzzle_hash.hex(),
