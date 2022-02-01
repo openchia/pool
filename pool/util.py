@@ -38,9 +38,13 @@ class RequestMetadata:
 
 def payment_targets_to_additions(payment_targets, min_payment):
     additions = []
-    for ph, amounts in list(payment_targets.items()):
-        amount = sum([i['amount'] for i in amounts])
-        if amount >= min_payment:
+    for ph, payment in list(payment_targets.items()):
+        amount = sum([i['amount'] for i in payment])
+        min_pay = min_payment
+        luancher_min_pay = payment.pop('min_payout', None) or 0
+        if luancher_min_pay > min_pay:
+            min_pay = luancher_min_pay
+        if amount >= min_pay:
             additions.append({'puzzle_hash': ph, 'amount': amount})
         else:
             payment_targets.pop(ph)

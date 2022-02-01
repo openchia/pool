@@ -486,14 +486,15 @@ class PgsqlPoolStore(AbstractPoolStore):
                         "INSERT INTO payout_address "
                         "(payout_id, payout_round, fee, tx_fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction_id) "
                         "VALUES "
-                        "(%s,        %s,           true, 0,  %s,         %s,               NULL,        %s,     NULL,        0,               NULL) "
+                        "(%s,        %s,           true, 0,     %s,          %s,               NULL,        %s,     NULL,        0,               NULL) "
                         "RETURNING id",
                         (payout_id, payout_round, fee_puzzle_hash.hex(), pool_puzzle_hash.hex(), pool_fee_per_round),
                     )
                     payout_addresses_ids.append(rv[0][0])
 
                 rv = await self._execute(
-                    "SELECT launcher_id FROM farmer WHERE payout_instructions = %s",
+                    "SELECT launcher_id FROM farmer WHERE payout_instructions = %s "
+                    "ORDER BY joined_at NULLS FIRST",
                     (i["puzzle_hash"].hex(),),
                 )
                 if rv and rv[0]:
@@ -594,7 +595,7 @@ class PgsqlPoolStore(AbstractPoolStore):
         payment_targets_per_tx = defaultdict(lambda: defaultdict(list))
         payout_round = None
         for i in await self._execute(
-            "SELECT p.id, t.transaction, p.payout_id, p.puzzle_hash, p.amount, p.payout_round, p.fee FROM payout_address p LEFT JOIN transaction t ON p.transaction_id = t.id WHERE p.pool_puzzle_hash = %s AND t.confirmed_block_index IS NULL ORDER BY p.payout_round ASC, p.fee DESC, p.id ASC",
+            "SELECT p.id, t.transaction, p.payout_id, p.puzzle_hash, p.amount, p.payout_round, p.fee, f.minimum_payout FROM payout_address p LEFT JOIN transaction t ON p.transaction_id = t.id LEFT JOIN farmer f ON p.launcher_id = f.launcher_id WHERE p.pool_puzzle_hash = %s AND t.confirmed_block_index IS NULL ORDER BY p.payout_round ASC, p.fee DESC, p.id ASC",
             (pool_puzzle_hash.hex(), ),
         ):
             # Only get payout addresses for the same round
@@ -612,6 +613,7 @@ class PgsqlPoolStore(AbstractPoolStore):
                 "payout_id": i[2],
                 "amount": i[4],
                 "fee": i[6],
+                "min_payout": i[7],
             })
         return payment_targets_per_tx
 
