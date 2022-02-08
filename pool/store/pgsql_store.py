@@ -519,16 +519,7 @@ class PgsqlPoolStore(AbstractPoolStore):
             return payout_id
         except Exception as e:
             try:
-                if payout_id:
-                    await self._execute(
-                        "DELETE FROM payout WHERE id = %s",
-                        (payout_id,),
-                    )
                 for coin_record in coin_rewards_added:
-                    await self._execute(
-                        "UPDATE block SET payout_id = %s WHERE singleton = %s",
-                        (payout_id, coin_record.coin.parent_coin_info.hex(),),
-                    )
                     await self._execute(
                         "DELETE FROM coin_reward WHERE name = %s",
                         (coin_record.name.hex(),),
@@ -537,6 +528,15 @@ class PgsqlPoolStore(AbstractPoolStore):
                     await self._execute(
                         "DELETE FROM payout_address WHERE id = %s",
                         (pid,),
+                    )
+                if payout_id:
+                    await self._execute(
+                        "UPDATE block SET payout_id = NULL WHERE payout_id = %s",
+                        (payout_id,),
+                    )
+                    await self._execute(
+                        "DELETE FROM payout WHERE id = %s",
+                        (payout_id,),
                     )
             except Exception:
                 logger.error('Failed to rollback', exc_info=True)

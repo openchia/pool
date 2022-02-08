@@ -178,7 +178,10 @@ class Partials(object):
         if time_target is None:
             time_target = self.pool_config['time_target']
         estimated_size = int(points / (time_target * 1.0881482400062102e-15))
-        if self.config['full_node']['selected_network'] == 'testnet7':
+        if self.config['full_node']['selected_network'] in ('testnet7', 'testnet10'):
+            # DIFFICULTY_CONSTANT_FACTOR
+            # mainnet = 2 ** 67
+            # testnet = 10052721566054
             estimated_size = int(estimated_size / 14680000)
         return estimated_size
 

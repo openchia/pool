@@ -1325,19 +1325,10 @@ class Pool:
                     int(self.number_of_partials_target),
                     int(self.time_target),
                     current_difficulty,
+                    farmer_record.custom_difficulty,
                     time_received_partial,
                     self.min_difficulty,
                 )
-
-                if farmer_record.custom_difficulty:
-                    if farmer_record.custom_difficulty == 'LOWEST':
-                        new_difficulty = uint64(int(int(new_difficulty) * 0.5) or 1)
-                    elif farmer_record.custom_difficulty == 'LOWEST':
-                        new_difficulty = uint64(int(int(new_difficulty) * 0.75) or 1)
-                    elif farmer_record.custom_difficulty == 'HIGH':
-                        new_difficulty = uint64(int(new_difficulty) * 1.5)
-                    elif farmer_record.custom_difficulty == 'HIGHEST':
-                        new_difficulty = uint64(int(new_difficulty) * 2)
 
                 if current_difficulty != new_difficulty:
                     await self.store.update_difficulty(partial.payload.launcher_id, new_difficulty)
