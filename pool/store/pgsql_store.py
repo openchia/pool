@@ -551,13 +551,14 @@ class PgsqlPoolStore(AbstractPoolStore):
 
         rv = await self._execute(
             "INSERT INTO transaction ("
-            " transaction, xch_price"
+            " transaction, xch_price, created_at_time"
             ") VALUES ("
-            " %s,          %s"
+            " %s,          %s,        to_timestamp(%s)"
             ") RETURNING id",
             (
                 transaction.name.hex(),
                 json.dumps(globalinfo['xch_current_price']) if globalinfo else None,
+                int(transaction.created_at_time),
             ),
         )
         tx_id = rv[0][0]
