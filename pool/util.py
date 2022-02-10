@@ -82,6 +82,12 @@ async def create_transaction(
     payment_targets,
 ):
 
+    if wallet.get('use_reward_coin', True) is False:
+        transaction = await wallet['rpc_client'].create_signed_transaction(
+            additions, fee=fee
+        )
+        return transaction
+
     # Lets get all coins rewards that are associated with the payouts in this round
     payout_ids = set()
     for targets in payment_targets.values():
