@@ -787,7 +787,12 @@ class Pool:
 
                     if tx_id is None:
 
-                        additions = payment_targets_to_additions(payment_targets, self.min_payment)
+                        # Only allow launcher minimum payment for the first pool wallet
+                        launcher_min_payment = self.wallets[0]['puzzle_hash'] == wallet['puzzle_hash']
+                        additions = payment_targets_to_additions(
+                            payment_targets, self.min_payment,
+                            launcher_min_payment=launcher_min_payment,
+                        )
 
                         if self.payment_fee and additions:
                             transaction: TransactionRecord = await wallet['rpc_client'].create_signed_transaction(
@@ -808,7 +813,10 @@ class Pool:
                                 if total <= 0:
                                     raise RuntimeError('Launcher id does not have enough for a fee payment')
                             # Redo additions with proper amount this time
-                            additions = payment_targets_to_additions(payment_targets, self.min_payment)
+                            additions = payment_targets_to_additions(
+                                payment_targets, self.min_payment,
+                                launcher_min_payment=launcher_min_payment,
+                            )
                         else:
                             blockchain_fee = uint64(0)
 
