@@ -36,7 +36,7 @@ class RequestMetadata:
         self.headers = {k.lower(): v for k, v in self.headers.items()}
 
 
-def payment_targets_to_additions(payment_targets, min_payment):
+def payment_targets_to_additions(payment_targets, min_payment, launcher_min_payment=True):
     additions = []
     for ph, payment in list(payment_targets.items()):
         amount = 0
@@ -44,9 +44,10 @@ def payment_targets_to_additions(payment_targets, min_payment):
         min_pay = min_payment
         for i in payment:
             amount += i['amount']
-            launcher_min_pay = i.pop('min_payout', None) or 0
-            if launcher_min_pay > min_pay:
-                min_pay = launcher_min_pay
+            if launcher_min_payment:
+                launcher_min_pay = i.pop('min_payout', None) or 0
+                if launcher_min_pay > min_pay:
+                    min_pay = launcher_min_pay
 
         if amount >= min_pay:
             additions.append({'puzzle_hash': ph, 'amount': amount})
