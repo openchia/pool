@@ -164,6 +164,7 @@ class Pool:
 
         # Don't scan anything before this height, for efficiency (for example pool start date)
         self.scan_start_height: uint32 = uint32(pool_config["scan_start_height"])
+        self.current_scan_height: uint32 = self.scan_start_height
 
         # Interval for scanning and collecting the pool rewards
         self.collect_pool_rewards_interval = pool_config["collect_pool_rewards_interval"]
@@ -376,6 +377,11 @@ class Pool:
             try:
                 self.blockchain_state = await self.node_rpc_client.get_blockchain_state()
 
+                if self.blockchain_state['peak'].height > self.current_scan_height:
+                    new_scan_height = self.blockchain_state['peak'].height - 500
+                    if new_scan_height > self.current_scan_height:
+                        self.current_scan_height = uint32(new_scan_height)
+
                 # Get the wallets as last since its not absolutely critical for pool operation
                 for wallet in self.wallets:
                     try:
@@ -446,10 +452,10 @@ class Pool:
                 coin_records: List[CoinRecord] = await self.node_rpc_client.get_coin_records_by_puzzle_hashes(
                     scan_phs,
                     include_spent_coins=False,
-                    start_height=self.scan_start_height,
+                    start_height=self.current_scan_height,
                 )
                 self.log.info(
-                    f"Scanning for block rewards from {self.scan_start_height} to {peak_height}. "
+                    f"Scanning for block rewards from {self.current_scan_height} to {peak_height}. "
                     f"Found: {len(coin_records)}"
                 )
                 ph_to_amounts: Dict[bytes32, int] = {}
@@ -570,7 +576,7 @@ class Pool:
                 coin_records: List[CoinRecord] = await self.node_rpc_client.get_coin_records_by_puzzle_hash(
                     wallet['puzzle_hash'],
                     include_spent_coins=False,
-                    start_height=self.scan_start_height,
+                    start_height=self.current_scan_height,
                 )
 
                 pending_payments_coins: List[str] = await self.store.get_pending_payments_coins(
