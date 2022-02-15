@@ -1,4 +1,4 @@
-git+git://github.com/william-gr/chia-blockchain.git@feature/wallet_push_tx#egg=chia-blockchain
+git+git://github.com/openchia/chia-blockchain.git@stable/1.2#egg=chia-blockchain
 git+https://github.com/olucurious/PyFCM.git@1.5.4
 blspy~=1.0.2
 setuptools~=56.1.0
