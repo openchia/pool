@@ -299,14 +299,24 @@ class PgsqlPoolStore(AbstractPoolStore):
         await self._execute("DELETE FROM pending_partial")
         return partials
 
-    async def add_partial(self, partial_payload: PostPartialPayload, timestamp: uint64, difficulty: uint64, error: Optional[str] = None):
+    async def add_partial(self,
+        partial_payload: PostPartialPayload,
+        req_metadata: RequestMetadata,
+        timestamp: uint64,
+        difficulty: uint64,
+        error: Optional[str] = None,
+    ) -> None:
+        print("headers", req_metadata.headers)
+        print("url", req_metadata.url)
         async with self.pool.acquire() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute(
                     "INSERT INTO partial ("
-                    " launcher_id, timestamp, difficulty, error, harvester_id"
+                    " launcher_id, timestamp, difficulty, error, harvester_id, plot_id,"
+                    " chia_version, remote, pool_host"
                     ") VALUES ("
-                    " %s,          %s,        %s,         %s,    %s"
+                    " %s,          %s,        %s,         %s,    %s,           %s,"
+                    " %s,           %s,     %s"
                     ")",
                     (
                         partial_payload.launcher_id.hex(),
@@ -314,6 +324,10 @@ class PgsqlPoolStore(AbstractPoolStore):
                         difficulty,
                         error,
                         partial_payload.harvester_id.hex(),
+                        partial_payload.proof_of_space.get_plot_id().hex(),
+                        req_metadata.get_chia_version(),
+                        req_metadata.remote or None,
+                        req_metadata.get_host(),
                     ),
                 )
 

@@ -242,7 +242,12 @@ class PoolServer:
                 f"Farmer with launcher_id {partial.payload.launcher_id.hex()} not known.",
             )
 
-        post_partial_response = await self.pool.process_partial(partial, farmer_record, uint64(int(start_time)))
+        post_partial_response: Dict = await self.pool.process_partial(
+            partial,
+            farmer_record,
+            self.post_metadata_from_request(request_obj),
+            uint64(int(start_time)),
+        )
 
         self.pool.log.info(
             f"post_partial response {post_partial_response}, time: {time.time() - start_time} "

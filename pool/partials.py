@@ -11,6 +11,8 @@ from chia.util.ints import uint64
 from decimal import Decimal
 from typing import Optional
 
+from .util import RequestMetadata
+
 logger = logging.getLogger('partials')
 
 
@@ -311,10 +313,16 @@ class Partials(object):
             self.cache.pop(lid, None)
         await self.scrub()
 
-    async def add_partial(self, partial_payload: PostPartialPayload, timestamp: uint64, difficulty: uint64, error: Optional[str] = None):
+    async def add_partial(self,
+        partial_payload: PostPartialPayload,
+        req_metadata: RequestMetadata,
+        timestamp: uint64,
+        difficulty: uint64,
+        error: Optional[str] = None,
+    ) -> None:
 
         # Add to database
-        await self.store.add_partial(partial_payload, timestamp, difficulty, error)
+        await self.store.add_partial(partial_payload, req_metadata, timestamp, difficulty, error)
 
         # Add to the cache and compute the estimated farm size if a successful partial
         if error is None:

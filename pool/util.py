@@ -1,6 +1,7 @@
 import logging
 from dataclasses import dataclass
-from typing import Dict, Mapping
+from typing import Dict, Mapping, Optional
+from urllib.parse import urlparse
 
 from chia.protocols.pool_protocol import PoolErrorCode, ErrorResponse
 from chia.util.ints import uint16
@@ -34,6 +35,20 @@ class RequestMetadata:
 
     def __post_init__(self):
         self.headers = {k.lower(): v for k, v in self.headers.items()}
+
+    def get_chia_version(self) -> Optional[str]:
+        user_agent = self.headers.get('user-agent')
+        if not user_agent:
+            return
+        if user_agent.startswith('Chia Blockchain v.'):
+            return user_agent.split('Chia Blockchain v.', 1)[-1]
+
+    def get_host(self) -> Optional[str]:
+        try:
+            parse = urlparse(self.url)
+            return parse.hostname
+        except ValueError:
+            return None
 
 
 def payment_targets_to_additions(payment_targets, min_payment, launcher_min_payment=True):
