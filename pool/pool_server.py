@@ -175,7 +175,7 @@ class PoolServer:
             headers=request_obj.headers,
             cookies=dict(request_obj.cookies),
             query=dict(request_obj.query),
-            remote=request_obj.remote,
+            remote=request_obj.headers.get('x-forwarded-for') or request_obj.remote,
         )
 
     async def post_farmer(self, request_obj) -> web.Response:
