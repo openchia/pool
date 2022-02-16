@@ -46,6 +46,9 @@ class RequestMetadata:
 
     def get_host(self) -> Optional[str]:
         try:
+            forwarded = self.headers.get('x-forwarded-host')
+            if forwarded:
+                return forwarded
             parse = urlparse(self.url)
             return parse.hostname
         except ValueError:
