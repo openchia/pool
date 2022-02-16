@@ -1,5 +1,6 @@
+import json
 import logging
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import Dict, Mapping, Optional
 from urllib.parse import urlparse
 
@@ -49,6 +50,13 @@ class RequestMetadata:
             return parse.hostname
         except ValueError:
             return None
+
+    def to_json_dict(self):
+        return asdict(self)
+
+    @classmethod
+    def from_json_dict(cls, data):
+        return cls(**data)
 
 
 def payment_targets_to_additions(payment_targets, min_payment, launcher_min_payment=True):
