@@ -274,25 +274,39 @@ class PgsqlPoolStore(AbstractPoolStore):
     async def clear_farmer_points(self) -> None:
         await self._execute("UPDATE farmer set points=0")
 
-    async def add_pending_partial(self, partial: PostPartialRequest, time_received: uint64, points_received: uint64) -> None:
+    async def add_pending_partial(
+        self,
+        partial: PostPartialRequest,
+        req_metadata: RequestMetadata,
+        time_received: uint64,
+        points_received: uint64,
+    ) -> None:
         await self._execute(
             "INSERT INTO pending_partial ("
-            "partial, time_received, points_received"
+            "partial, req_metadata, time_received, points_received"
             ") VALUES ("
-            "%s     , %s           , %s"
+            "%s,      %s,           %s,            %s"
             ")",
-            (json.dumps(partial.to_json_dict()), int(time_received), int(points_received)),
+            (
+                json.dumps(partial.to_json_dict()),
+                json.dumps(req_metadata.to_json_dict()),
+                int(time_received),
+                int(points_received),
+            ),
         )
 
-    async def get_pending_partials(self) -> List[Tuple[PostPartialRequest, uint64, uint64]]:
+    async def get_pending_partials(self) -> List[Tuple[
+        PostPartialRequest, Optional[RequestMetadata], uint64, uint64
+    ]]:
         partials = [
             (
                 PostPartialRequest.from_json_dict(i[0]),
-                uint64(i[1]),
+                RequestMetadata.from_json_dict(i[1]) if i[1] else None,
                 uint64(i[2]),
+                uint64(i[3]),
             )
             for i in await self._execute(
-                "SELECT partial, time_received, points_received FROM pending_partial "
+                "SELECT partial, req_metadata, time_received, points_received FROM pending_partial "
                 "ORDER BY id ASC"
             )
         ]
@@ -301,7 +315,7 @@ class PgsqlPoolStore(AbstractPoolStore):
 
     async def add_partial(self,
         partial_payload: PostPartialPayload,
-        req_metadata: RequestMetadata,
+        req_metadata: Optional[RequestMetadata],
         timestamp: uint64,
         difficulty: uint64,
         error: Optional[str] = None,
@@ -323,9 +337,9 @@ class PgsqlPoolStore(AbstractPoolStore):
                         error,
                         partial_payload.harvester_id.hex(),
                         partial_payload.proof_of_space.get_plot_id().hex(),
-                        req_metadata.get_chia_version(),
-                        req_metadata.remote or None,
-                        req_metadata.get_host(),
+                        req_metadata.get_chia_version() if req_metadata else None,
+                        (req_metadata.remote or None) if req_metadata else None,
+                        req_metadata.get_host() if req_metadata else None,
                     ),
                 )
 

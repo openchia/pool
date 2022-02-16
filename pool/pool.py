@@ -937,7 +937,7 @@ class Pool:
     async def check_and_confirm_partial(
         self,
         partial: PostPartialRequest,
-        req_metadata: RequestMetadata,
+        req_metadata: Optional[RequestMetadata],
         time_received: uint64,
         points_received: uint64,
     ) -> None:
@@ -1275,7 +1275,7 @@ class Pool:
         self,
         partial: PostPartialRequest,
         farmer_record: FarmerRecord,
-        req_metadata: RequestMetadata,
+        req_metadata: Optional[RequestMetadata],
         time_received_partial: uint64,
     ) -> Dict:
         # Validate signatures

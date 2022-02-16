@@ -315,7 +315,7 @@ class Partials(object):
 
     async def add_partial(self,
         partial_payload: PostPartialPayload,
-        req_metadata: RequestMetadata,
+        req_metadata: Optional[RequestMetadata],
         timestamp: uint64,
         difficulty: uint64,
         error: Optional[str] = None,
