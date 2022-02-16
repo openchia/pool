@@ -306,8 +306,6 @@ class PgsqlPoolStore(AbstractPoolStore):
         difficulty: uint64,
         error: Optional[str] = None,
     ) -> None:
-        print("headers", req_metadata.headers)
-        print("url", req_metadata.url)
         async with self.pool.acquire() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute(
