@@ -146,6 +146,7 @@ class Pool:
 
         self.payment_fee: bool = pool_config.get('payment_fee')
         self.absorb_fee: bool = pool_config.get('absorb_fee')
+        self.absorb_fee_absolute: Optional[int] = pool_config.get('absorb_fee_absolute')
         self.min_payment: int = pool_config.get('min_payment', 0)
 
         # We need to check for slow farmers. If farmers cannot submit proofs in time, they won't be able to win
@@ -542,6 +543,7 @@ class Pool:
                         self.blockchain_state["peak"].height,
                         coins_to_absorb,
                         self.absorb_fee,
+                        self.absorb_fee_absolute,
                         self.constants,
                     )
 
