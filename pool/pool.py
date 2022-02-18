@@ -62,6 +62,7 @@ from .singleton import (
     find_reward_from_coinrecord,
 )
 from .store.abstract import AbstractPoolStore
+from .store.influxdb_store import InfluxdbStore
 from .store.pgsql_store import PgsqlPoolStore
 from .record import FarmerRecord
 from .task import task_exception
@@ -99,6 +100,7 @@ class Pool:
         self.constants = constants
 
         self.store: AbstractPoolStore = pool_store or PgsqlPoolStore(pool_config)
+        self.store_ts = InfluxdbStore(pool_config)
         self.partials = Partials(self)
 
         self.pool_fee = pool_config["pool_fee"]
@@ -205,6 +207,7 @@ class Pool:
 
     async def start(self):
         await self.store.connect()
+        await self.store_ts.connect()
         await self.partials.load_from_store()
 
         self.node_rpc_client = await FullNodeRpcClient.create(

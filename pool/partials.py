@@ -69,10 +69,12 @@ class PartialsCache(dict):
 
     def __init__(
             self, *args,
-            partials=None, store=None, config=None, pool_config=None, keep_interval: int = 86400,
+            partials=None, store=None, store_ts=None, config=None, pool_config=None,
+            keep_interval: int = 86400,
             **kwargs):
         self.partials = partials
         self.store = store
+        self.store_ts = store_ts
         self.config = config
         self.pool_config = pool_config
         self.keep_interval = keep_interval
@@ -144,12 +146,15 @@ class PartialsCache(dict):
             launcher_id, estimated_size, points, share_pplns
         )
 
+        asyncio.create_task(self.store_ts.add_launcher_size(launcher_id, estimated_size, estimated_size_8h))
+
 
 class Partials(object):
 
     def __init__(self, pool):
         self.pool = pool
         self.store = pool.store
+        self.store_ts = pool.store_ts
         self.config = pool.config
         self.pool_config = pool.pool_config
         # By default keep partials for the last day
@@ -158,6 +163,7 @@ class Partials(object):
         self.cache = PartialsCache(
             partials=self,
             store=self.store,
+            store_ts=self.store_ts,
             config=self.config,
             pool_config=self.pool_config,
             keep_interval=self.keep_interval,
@@ -237,8 +243,17 @@ class Partials(object):
     async def pool_estimated_size_loop(self):
         while True:
             try:
-                estimated_size = self.calculate_estimated_size(self.cache.all.points)
-                await self.store.set_pool_size(estimated_size)
+                start_time = int(time.time()) - self.keep_interval
+                points_per_pool_host = await self.store.get_points_per_pool_host(start_time)
+
+                points_per_pool_host['global'] = sum(points_per_pool_host.values())
+
+                size_per_pool_host = {}
+                for k, v in points_per_pool_host.items():
+                    size_per_pool_host[k] = self.calculate_estimated_size(v)
+
+                await self.store.set_pool_size(size_per_pool_host['global'])
+                await self.store_ts.add_pool_size(size_per_pool_host)
             except asyncio.CancelledError:
                 logger.info('Cancelled pool_estimated_size_loop')
                 break

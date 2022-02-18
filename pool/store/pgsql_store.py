@@ -366,6 +366,19 @@ class PgsqlPoolStore(AbstractPoolStore):
         ]
         return ret
 
+    async def get_points_per_pool_host(self, start_time) -> Dict[str, int]:
+        # FIXME: Verify query speed, check index on timestamp
+        return {
+            i[0]: i[1]
+            for i in await self._execute(
+                'SELECT p.pool_host, SUM(p.difficulty) FROM partial p'
+                ' JOIN farmer f ON p.launcher_id = f.launcher_id'
+                ' WHERE f.is_pool_member = true AND p.error IS NULL AND p.timestamp > %s'
+                ' GROUP BY p.pool_host',
+                (start_time, ),
+            )
+        }
+
     async def get_launchers_without_recent_partials(self, start_time) -> List[bytes32]:
         return [
             bytes32(bytes.fromhex(i[0]))
