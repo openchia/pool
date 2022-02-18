@@ -53,7 +53,6 @@ async def spend_with_fee(
             include_spent_coins=False,
         )
         for cr in (coin_records or []):
-            print(cr, cr.coin.amount)
             if cr.coin.amount >= 200000000 and cr.coin.amount <= 1000000000000:
                 break
         else:
