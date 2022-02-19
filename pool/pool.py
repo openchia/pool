@@ -145,6 +145,7 @@ class Pool:
         self.pool_fee_puzzle_hash: bytes32 = bytes32(decode_puzzle_hash(pool_config["pool_fee_address"]))
 
         self.payment_fee: bool = pool_config.get('payment_fee')
+        self.payment_fee_absolute: int = pool_config.get('payment_fee_absolute')
         self.absorb_fee: bool = pool_config.get('absorb_fee')
         self.absorb_fee_absolute: Optional[int] = pool_config.get('absorb_fee_absolute')
         self.min_payment: int = pool_config.get('min_payment', 0)
@@ -811,7 +812,7 @@ class Pool:
                             launcher_min_payment=launcher_min_payment,
                         )
 
-                        if self.payment_fee and additions:
+                        if self.payment_fee and not self.payment_fee_absolute and additions:
                             transaction: TransactionRecord = await wallet['rpc_client'].create_signed_transaction(
                                 additions, fee=25000000 * len(additions),  # Estimated fee
                             )
@@ -835,7 +836,18 @@ class Pool:
                                 launcher_min_payment=launcher_min_payment,
                             )
                         else:
-                            blockchain_fee = uint64(0)
+                            if self.payment_fee and self.payment_fee_absolute:
+                                for i in additions:
+                                    if i['puzzle_hash'] == self.pool_fee_puzzle_hash:
+                                        i['amount'] -= self.payment_fee_absolute
+                                        if i['amount'] < 0:
+                                            raise RuntimeError('Pool fee not big enough to cover absolute payment fee')
+                                        break
+                                else:
+                                    raise RuntimeError('Could not find pool fee address')
+                                blockchain_fee = uint64(self.payment_fee_absolute)
+                            else:
+                                blockchain_fee = uint64(0)
 
                         if not additions:
                             self.log.info('No payments above minimum, skipping.')
