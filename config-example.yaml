@@ -26,9 +26,12 @@ collect_pool_rewards_interval: 600
 confirmation_security_threshold: 32
 payment_interval: 600
 max_additions_per_transaction: 400
-transaction_fee: 0
+payment_fee: false
+#payment_fee_absolute: 1
 absorb_fee: false
 #absorb_fee_absolute: 1
+#absorbed_extra_coins:
+#  - hash
 number_of_partials_target: 300
 time_target: 86400
 relative_lock_height: 32

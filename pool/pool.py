@@ -150,6 +150,13 @@ class Pool:
         self.absorb_fee_absolute: Optional[int] = pool_config.get('absorb_fee_absolute')
         self.min_payment: int = pool_config.get('min_payment', 0)
 
+        # Workaround for adding a block for a coin that was already spent from
+        # the wallet puzzle hash
+        self.absorbed_extra_coins: List[bytes32] = [
+            bytes32(bytes.fromhex(i))
+            for i in (pool_config.get('absorbed_extra_coins') or [])
+        ]
+
         # We need to check for slow farmers. If farmers cannot submit proofs in time, they won't be able to win
         # any rewards either. This number can be tweaked to be more or less strict. More strict ensures everyone
         # gets high rewards, but it might cause some of the slower farmers to not be able to participate in the pool.
@@ -590,6 +597,15 @@ class Pool:
                     include_spent_coins=False,
                     start_height=self.scan_current_height,
                 )
+
+                if self.absorbed_extra_coins:
+                    for cr in await self.node_rpc_client.get_coin_records_by_names(
+                        self.absorbed_extra_coins,
+                        include_spent_coins=True,
+                        start_height=self.scan_start_height,
+                    ):
+                        if cr.coin.puzzle_hash == wallet['puzzle_hash']:
+                            coin_records.append(cr)
 
                 pending_payments_coins: List[str] = await self.store.get_pending_payments_coins(
                     wallet['puzzle_hash']
