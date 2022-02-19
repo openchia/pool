@@ -836,7 +836,7 @@ class Pool:
                                 launcher_min_payment=launcher_min_payment,
                             )
                         else:
-                            if self.payment_fee and self.payment_fee_absolute:
+                            if self.payment_fee and self.payment_fee_absolute and additions:
                                 for i in additions:
                                     if i['puzzle_hash'] == self.pool_fee_puzzle_hash:
                                         i['amount'] -= self.payment_fee_absolute
@@ -844,7 +844,7 @@ class Pool:
                                             raise RuntimeError('Pool fee not big enough to cover absolute payment fee')
                                         break
                                 else:
-                                    raise RuntimeError('Could not find pool fee address')
+                                    self.log.warning('Could not find pool fee address for this payment')
                                 blockchain_fee = uint64(self.payment_fee_absolute)
                             else:
                                 blockchain_fee = uint64(0)
