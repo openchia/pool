@@ -633,16 +633,16 @@ class PgsqlPoolStore(AbstractPoolStore):
 
     async def get_pending_payment_targets(self, pool_puzzle_hash: bytes32):
         payment_targets_per_tx = defaultdict(lambda: defaultdict(list))
-        payout_round = None
         for i in await self._execute(
-            "SELECT p.id, t.transaction, p.payout_id, p.puzzle_hash, p.amount, p.payout_round, p.fee, f.minimum_payout FROM payout_address p LEFT JOIN transaction t ON p.transaction_id = t.id LEFT JOIN farmer f ON p.launcher_id = f.launcher_id WHERE p.pool_puzzle_hash = %s AND t.confirmed_block_index IS NULL ORDER BY p.payout_round ASC, p.fee DESC, p.id ASC",
+            'SELECT p.id, t.transaction, p.payout_id, p.puzzle_hash, p.amount, p.fee,'
+            '  f.minimum_payout'
+            ' FROM payout_address p LEFT JOIN transaction t ON p.transaction_id = t.id'
+            '  LEFT JOIN farmer f ON p.launcher_id = f.launcher_id'
+            ' WHERE p.pool_puzzle_hash = %s AND t.confirmed_block_index IS NULL'
+            ' ORDER BY p.id ASC'
+            ' LIMIT 400',
             (pool_puzzle_hash.hex(), ),
         ):
-            # Only get payout addresses for the same round
-            if payout_round is None:
-                payout_round = i[5]
-            elif payout_round != i[5]:
-                break
 
             if i[1]:
                 tx_id = bytes32(bytes.fromhex(i[1]))
