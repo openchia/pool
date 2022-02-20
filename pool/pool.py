@@ -122,6 +122,9 @@ class Pool:
         self.pending_point_partials: asyncio.Queue = asyncio.Queue()
         self.recent_points_added: LRUCache = LRUCache(20000)
 
+        self.recent_signage_point: LRUCache = LRUCache(1000)
+        self.recent_eos: LRUCache = LRUCache(1000)
+
         # The time in minutes for an authentication token to be valid. See "Farmer authentication" in SPECIFICATION.md
         self.authentication_token_timeout: uint8 = pool_config["authentication_token_timeout"]
 
@@ -990,6 +993,23 @@ class Pool:
             except Exception as e:
                 self.log.error(f"Unexpected error: {e}", exc_info=True)
 
+    async def get_signage_point_or_eos(self, partial):
+        if partial.payload.end_of_sub_slot:
+            response = self.recent_eos.get(partial.payload.sp_hash)
+            if not response:
+                response = await self.node_rpc_client.get_recent_signage_point_or_eos(
+                    None, partial.payload.sp_hash,
+                )
+                self.recent_eos.put(partial.payload.sp_hash, response)
+        else:
+            response = self.recent_signage_point.get(partial.payload.sp_hash)
+            if not response:
+                response = await self.node_rpc_client.get_recent_signage_point_or_eos(
+                    partial.payload.sp_hash, None
+                )
+                self.recent_signage_point.put(partial.payload.sp_hash, response)
+        return response
+
     async def check_and_confirm_partial(
         self,
         partial: PostPartialRequest,
@@ -1000,17 +1020,14 @@ class Pool:
         try:
             # TODO(pool): these lookups to the full node are not efficient and can be cached, especially for
             #  scaling to many users
-            if partial.payload.end_of_sub_slot:
-                response = await self.node_rpc_client.get_recent_signage_point_or_eos(None, partial.payload.sp_hash)
-                if response is None or response["reverted"]:
+            response = await self.get_signage_point_or_eos(partial)
+            if response is None or response["reverted"]:
+                if partial.payload.end_of_sub_slot:
                     self.log.info(f"Partial EOS reverted: {partial.payload.sp_hash}")
                     await self.partials.add_partial(
                         partial.payload, req_metadata, time_received, points_received, 'EOS_REVERTED'
                     )
-                    return
-            else:
-                response = await self.node_rpc_client.get_recent_signage_point_or_eos(partial.payload.sp_hash, None)
-                if response is None or response["reverted"]:
+                else:
                     self.log.info(f"Partial SP reverted: {partial.payload.sp_hash}")
                     await self.partials.add_partial(
                         partial.payload,
@@ -1019,7 +1036,7 @@ class Pool:
                         points_received,
                         'SP_REVERTED',
                     )
-                    return
+                return
 
             # Now we know that the partial came on time, but also that the signage point / EOS is still in the
             # blockchain. We need to check for double submissions.
@@ -1365,17 +1382,11 @@ class Pool:
                 f"Invalid pool contract puzzle hash {partial.payload.proof_of_space.pool_contract_puzzle_hash}",
             )
 
-        async def get_signage_point_or_eos():
-            if partial.payload.end_of_sub_slot:
-                return await self.node_rpc_client.get_recent_signage_point_or_eos(None, partial.payload.sp_hash)
-            else:
-                return await self.node_rpc_client.get_recent_signage_point_or_eos(partial.payload.sp_hash, None)
-
-        response = await get_signage_point_or_eos()
+        response = await self.get_signage_point_or_eos(partial)
         if response is None:
             # Try again after 30 seconds in case we just didn't yet receive the signage point
             await asyncio.sleep(30)
-            response = await get_signage_point_or_eos()
+            response = await self.get_signage_point_or_eos(partial)
 
         if response is None or response["reverted"]:
             await self.partials.add_partial(
