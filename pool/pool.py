@@ -846,6 +846,7 @@ class Pool:
                         additions = payment_targets_to_additions(
                             payment_targets, self.min_payment,
                             launcher_min_payment=launcher_min_payment,
+                            limit=400,
                         )
 
                         if self.payment_fee and not self.payment_fee_absolute and additions:

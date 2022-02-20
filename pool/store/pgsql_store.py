@@ -639,8 +639,7 @@ class PgsqlPoolStore(AbstractPoolStore):
             ' FROM payout_address p LEFT JOIN transaction t ON p.transaction_id = t.id'
             '  LEFT JOIN farmer f ON p.launcher_id = f.launcher_id'
             ' WHERE p.pool_puzzle_hash = %s AND t.confirmed_block_index IS NULL'
-            ' ORDER BY p.id ASC'
-            ' LIMIT 400',
+            ' ORDER BY p.id ASC',
             (pool_puzzle_hash.hex(), ),
         ):
 

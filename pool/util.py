@@ -62,11 +62,18 @@ class RequestMetadata:
         return cls(**data)
 
 
-def payment_targets_to_additions(payment_targets, min_payment, launcher_min_payment=True):
+def payment_targets_to_additions(
+        payment_targets: Dict, min_payment, launcher_min_payment: bool = True,
+        limit: Optional[int] = None,
+):
     additions = []
     for ph, payment in list(payment_targets.items()):
-        amount = 0
 
+        if limit and len(additions) > limit:
+            payment_targets.pop(ph)
+            continue
+
+        amount = 0
         min_pay = min_payment
         for i in payment:
             amount += i['amount']
