@@ -53,7 +53,8 @@ async def spend_with_fee(
         )
 
     # Spending the reward is broken!!!
-    spend_reward = False
+    # XXX Revert this commit on 1.3 XXX
+    spend_reward = True
     if not spend_reward:
         # Use a wallet coin to spend for the fee
         balance = await wallet['rpc_client'].get_wallet_balance(wallet['id'])
@@ -84,7 +85,23 @@ async def spend_with_fee(
         original_sb = SpendBundle(spends, G2Element())
         sb = SpendBundle.aggregate([original_sb, transaction.spend_bundle])
     else:
-        spend_coin = rewarded_coin
+        # XXX Revert this commit on 1.3 XXX
+        #spend_coin = rewarded_coin
+
+        coin_records = await node_rpc_client.get_coin_records_by_puzzle_hash(
+            wallet['puzzle_hash'],
+            include_spent_coins=False,
+        )
+        for cr in (coin_records or []):
+            if (
+                cr.coin.amount >= (absolute_fee or 200000000) and
+                cr.coin.amount != calculate_pool_reward(uint32(1))
+            ):
+                break
+        else:
+            raise NoCoinForFee('No coin big enough for a fee!')
+
+        spend_coin = cr.coin
 
         keys: Dict = await wallet['rpc_client'].get_private_key(wallet['fingerprint'])
 
