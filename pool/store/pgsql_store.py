@@ -652,8 +652,8 @@ class PgsqlPoolStore(AbstractPoolStore):
                 "id": i[0],
                 "payout_id": i[2],
                 "amount": i[4],
-                "fee": i[6],
-                "min_payout": i[7],
+                "fee": i[5],
+                "min_payout": i[6],
             })
         return payment_targets_per_tx
 
