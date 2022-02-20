@@ -313,7 +313,8 @@ class PgsqlPoolStore(AbstractPoolStore):
         await self._execute("DELETE FROM pending_partial")
         return partials
 
-    async def add_partial(self,
+    async def add_partial(
+        self,
         partial_payload: PostPartialPayload,
         req_metadata: Optional[RequestMetadata],
         timestamp: uint64,
@@ -582,10 +583,6 @@ class PgsqlPoolStore(AbstractPoolStore):
             raise e
 
     async def add_transaction(self, transaction, payment_targets) -> None:
-        ids = []
-        for targets in payment_targets.values():
-            ids += [str(i['id']) for i in targets]
-
         globalinfo = await self.get_globalinfo()
 
         rv = await self._execute(
@@ -601,6 +598,22 @@ class PgsqlPoolStore(AbstractPoolStore):
             ),
         )
         tx_id = rv[0][0]
+
+        ids = []
+        for ph, targets in payment_targets.items():
+            pa_ids = [str(i['id']) for i in targets]
+            ids += pa_ids
+
+            # Launcher payout instructions may have changed between minimum payouts
+            # so we need to make sure its updated correctly to the latest one when
+            # adding the transaction.
+            await self._execute(
+                "UPDATE payout_address SET puzzle_hash = %s WHERE id IN ({})".format(
+                    ', '.join(pa_ids)
+                ),
+                (ph.hex(),),
+            )
+
         await self._execute(
             "UPDATE payout_address SET transaction_id = %s WHERE id IN ({})".format(
                 ', '.join(ids)
@@ -645,10 +658,16 @@ class PgsqlPoolStore(AbstractPoolStore):
 
             if i[1]:
                 tx_id = bytes32(bytes.fromhex(i[1]))
+                # If a transaction already exists we use the puzzle hash already available
+                # Because the farmer payout intructions may change during payment
+                payout_instructions = bytes.fromhex(i[3])
             else:
                 tx_id = i[1]
+                # If there isn't a transaction yet we get the payout instructions
+                # directly from the farmer, as it may have changed.
+                # Otherwise it won't group properly
+                payout_instructions = bytes.fromhex(i[7]) if i[7] else bytes.fromhex(i[3])
 
-            payout_instructions = bytes.fromhex(i[7]) if i[7] else bytes.fromhex(i[3])
             payment_targets_per_tx[tx_id][payout_instructions].append({
                 "id": i[0],
                 "payout_id": i[2],
