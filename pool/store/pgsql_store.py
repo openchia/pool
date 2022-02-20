@@ -635,7 +635,7 @@ class PgsqlPoolStore(AbstractPoolStore):
         payment_targets_per_tx = defaultdict(lambda: defaultdict(list))
         for i in await self._execute(
             'SELECT p.id, t.transaction, p.payout_id, p.puzzle_hash, p.amount, p.fee,'
-            '  f.minimum_payout'
+            '  f.minimum_payout, f.payout_instructions'
             ' FROM payout_address p LEFT JOIN transaction t ON p.transaction_id = t.id'
             '  LEFT JOIN farmer f ON p.launcher_id = f.launcher_id'
             ' WHERE p.pool_puzzle_hash = %s AND t.confirmed_block_index IS NULL'
@@ -647,7 +647,9 @@ class PgsqlPoolStore(AbstractPoolStore):
                 tx_id = bytes32(bytes.fromhex(i[1]))
             else:
                 tx_id = i[1]
-            payment_targets_per_tx[tx_id][bytes.fromhex(i[3])].append({
+
+            payout_instructions = bytes.fromhex(i[7]) if i[7] else bytes.fromhex(i[3])
+            payment_targets_per_tx[tx_id][payout_instructions].append({
                 "id": i[0],
                 "payout_id": i[2],
                 "amount": i[4],
