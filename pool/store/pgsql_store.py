@@ -608,7 +608,7 @@ class PgsqlPoolStore(AbstractPoolStore):
             await self._execute(
                 'UPDATE payout_address SET transaction_id = %s, puzzle_hash = %s'
                 ' WHERE id IN ({})'.format(', '.join(ids)),
-                (ph.hex(),),
+                (tx_id, ph.hex(),),
             )
 
     async def get_pending_payments_coins(self, pool_puzzle_hash: bytes32):
