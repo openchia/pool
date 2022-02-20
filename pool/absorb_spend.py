@@ -29,6 +29,10 @@ from .fee import get_cost
 logger = logging.getLogger('absorb_spend')
 
 
+class NoCoinForFee(Exception):
+    pass
+
+
 async def spend_with_fee(
     node_rpc_client,
     wallets: List[Dict],
@@ -66,7 +70,7 @@ async def spend_with_fee(
             ):
                 break
         else:
-            raise RuntimeError("No coin big enough for a fee!")
+            raise NoCoinForFee('No coin big enough for a fee!')
 
         spend_coin = coin
 

@@ -51,6 +51,7 @@ from chia.pools.pool_puzzles import (
     launcher_id_to_p2_puzzle_hash,
 )
 
+from .absorb_spend import NoCoinForFee
 from .difficulty_adjustment import get_new_difficulty
 from .fee import get_cost
 from .launchers import LaunchersSingleton
@@ -550,16 +551,32 @@ class Pool:
                         ),
                     )[:1]
 
-                    spend_bundle = await create_absorb_transaction(
-                        self.node_rpc_client,
-                        self.wallets,
-                        rec,
-                        self.blockchain_state["peak"].height,
-                        coins_to_absorb,
-                        self.absorb_fee,
-                        self.absorb_fee_absolute,
-                        self.constants,
-                    )
+                    try:
+                        spend_bundle = await create_absorb_transaction(
+                            self.node_rpc_client,
+                            self.wallets,
+                            rec,
+                            self.blockchain_state["peak"].height,
+                            coins_to_absorb,
+                            self.absorb_fee,
+                            self.absorb_fee_absolute,
+                            self.constants,
+                        )
+                    except NoCoinForFee:
+                        self.log.error(
+                            'No coin in pool wallet for absorb fee. '
+                            'Retrying without fee.'
+                        )
+                        spend_bundle = await create_absorb_transaction(
+                            self.node_rpc_client,
+                            self.wallets,
+                            rec,
+                            self.blockchain_state["peak"].height,
+                            coins_to_absorb,
+                            False,
+                            0,
+                            self.constants,
+                        )
 
                     if spend_bundle is None:
                         continue
