@@ -53,7 +53,7 @@ async def spend_with_fee(
             include_spent_coins=False,
         )
         for cr in (coin_records or []):
-            if cr.coin.amount >= 200000000 and cr.coin.amount <= 1000000000000:
+            if cr.coin.amount >= (absolute_fee or 200000000) and cr.coin.amount <= 1000000000000:
                 break
         else:
             raise RuntimeError("No coin big enough for a fee!")
