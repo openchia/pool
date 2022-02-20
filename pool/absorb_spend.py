@@ -2,6 +2,7 @@ import logging
 from typing import Any, Dict, List, Optional
 from blspy import AugSchemeMPL, PrivateKey
 
+from chia.consensus.block_rewards import calculate_pool_reward
 from chia.consensus.constants import ConsensusConstants
 from chia.types.announcement import Announcement
 from chia.types.blockchain_format.coin import Coin
@@ -11,7 +12,7 @@ from chia.types.coin_spend import CoinSpend
 from chia.types.condition_opcodes import ConditionOpcode
 from chia.types.spend_bundle import SpendBundle
 from chia.util.condition_tools import conditions_by_opcode, conditions_for_solution
-from chia.util.ints import uint64
+from chia.util.ints import uint32, uint64
 from chia.util.hash import std_hash
 from chia.wallet.derive_keys import master_sk_to_wallet_sk
 from chia.wallet.puzzles.p2_delegated_puzzle_or_hidden_puzzle import (
@@ -19,6 +20,7 @@ from chia.wallet.puzzles.p2_delegated_puzzle_or_hidden_puzzle import (
     calculate_synthetic_secret_key,
     puzzle_for_pk,
 )
+from blspy import G2Element
 from chia.wallet.wallet import Wallet
 from chia.wallet.wallet_info import WalletInfo
 
@@ -46,61 +48,88 @@ async def spend_with_fee(
             f'No wallet with puzzle hash {rewarded_coin.puzzle_hash.hex()} found.'
         )
 
-    # Use a wallet coin to spend for the fee
-    if True:
-        coin_records = await node_rpc_client.get_coin_records_by_puzzle_hash(
-            wallet['puzzle_hash'],
-            include_spent_coins=False,
-        )
-        for cr in (coin_records or []):
-            if cr.coin.amount >= (absolute_fee or 200000000) and cr.coin.amount <= 1000000000000:
+    # Spending the reward is broken!!!
+    spend_reward = False
+    if not spend_reward:
+        # Use a wallet coin to spend for the fee
+        balance = await wallet['rpc_client'].get_wallet_balance(wallet['id'])
+        transaction = await wallet['rpc_client'].create_signed_transaction([{
+            'puzzle_hash': wallet['puzzle_hash'],
+            'amount': balance['spendable_balance'],
+        }])
+
+        # Find a coin that is big enough for the fee and also not a reward
+        for coin in transaction.spend_bundle.removals():
+            if (
+                coin.amount >= (absolute_fee or 200000000) and
+                coin.amount != calculate_pool_reward(uint32(1))
+            ):
                 break
         else:
             raise RuntimeError("No coin big enough for a fee!")
 
-        spend_coin = cr.coin
+        spend_coin = coin
+
+        transaction = await wallet['rpc_client'].create_signed_transaction(
+            additions=[{'puzzle_hash': wallet['puzzle_hash'], 'amount': 0}],
+            coins=[spend_coin],
+            coin_announcements=[Announcement(p2_coin.name(), b"$")],
+            fee=uint64(1),
+        )
+
+        original_sb = SpendBundle(spends, G2Element())
+        sb = SpendBundle.aggregate([original_sb, transaction.spend_bundle])
     else:
         spend_coin = rewarded_coin
 
-    keys: Dict = await wallet['rpc_client'].get_private_key(wallet['fingerprint'])
+        keys: Dict = await wallet['rpc_client'].get_private_key(wallet['fingerprint'])
 
-    private_key = PrivateKey.from_bytes(bytes.fromhex(keys['sk']))
-    private_key = master_sk_to_wallet_sk(private_key, 0)
-    pubkey = private_key.get_g1()
+        private_key = PrivateKey.from_bytes(bytes.fromhex(keys['sk']))
+        private_key = master_sk_to_wallet_sk(private_key, 0)
+        pubkey = private_key.get_g1()
 
-    puzzle: Program = puzzle_for_pk(bytes(pubkey))
+        puzzle: Program = puzzle_for_pk(bytes(pubkey))
 
-    sb = await create_spendbundle_with_fee(
-        constants,
-        private_key,
-        wallet['puzzle_hash'],
-        puzzle,
-        list(spends),
-        spend_coin,
-        p2_coin,
-        uint64(absolute_fee or 1),
-    )
+        sb = await create_spendbundle_with_fee(
+            constants,
+            private_key,
+            wallet['puzzle_hash'],
+            puzzle,
+            list(spends),
+            spend_coin,
+            p2_coin,
+            uint64(absolute_fee or 1),
+        )
 
     if absolute_fee:
         return sb
 
-    fee = uint64((await get_cost(sb, constants)) * 10)
+    fee = uint64((await get_cost(sb, constants)) * 5)
 
     if fee > spend_coin.amount:
         raise RuntimeError(
             f'Selected fee coin lower than the spend fee ({fee} > {spend_coin.amount})'
         )
 
-    return await create_spendbundle_with_fee(
-        constants,
-        private_key,
-        wallet['puzzle_hash'],
-        puzzle,
-        list(spends),
-        spend_coin,
-        p2_coin,
-        fee,
-    )
+    if not spend_reward:
+        transaction = await wallet['rpc_client'].create_signed_transaction(
+            additions=[{'puzzle_hash': wallet['puzzle_hash'], 'amount': 0}],
+            coins=[spend_coin],
+            coin_announcements=[Announcement(p2_coin.name(), b"$")],
+            fee=uint64(fee),
+        )
+        return SpendBundle.aggregate([original_sb, transaction.spend_bundle])
+    else:
+        return await create_spendbundle_with_fee(
+            constants,
+            private_key,
+            wallet['puzzle_hash'],
+            puzzle,
+            list(spends),
+            spend_coin,
+            p2_coin,
+            fee,
+        )
 
 
 async def create_spendbundle_with_fee(constants, private_key, puzzle_hash, puzzle, spends, spend_coin, p2_coin, fee):
