@@ -599,27 +599,17 @@ class PgsqlPoolStore(AbstractPoolStore):
         )
         tx_id = rv[0][0]
 
-        ids = []
         for ph, targets in payment_targets.items():
-            pa_ids = [str(i['id']) for i in targets]
-            ids += pa_ids
+            ids = [str(i['id']) for i in targets]
 
-            # Launcher payout instructions may have changed between minimum payouts
-            # so we need to make sure its updated correctly to the latest one when
-            # adding the transaction.
+            # Launcher payout instructions (puzzle hash) may have changed between minimum payouts
+            # so we need to make sure its updated correctly to the latest one when adding the
+            # transaction.
             await self._execute(
-                "UPDATE payout_address SET puzzle_hash = %s WHERE id IN ({})".format(
-                    ', '.join(pa_ids)
-                ),
+                'UPDATE payout_address SET transaction_id = %s, puzzle_hash = %s'
+                ' WHERE id IN ({})'.format(', '.join(ids)),
                 (ph.hex(),),
             )
-
-        await self._execute(
-            "UPDATE payout_address SET transaction_id = %s WHERE id IN ({})".format(
-                ', '.join(ids)
-            ),
-            (tx_id,),
-        )
 
     async def get_pending_payments_coins(self, pool_puzzle_hash: bytes32):
         return [
