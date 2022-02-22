@@ -1,4 +1,3 @@
-import json
 import logging
 from dataclasses import asdict, dataclass
 from typing import Dict, Mapping, Optional
@@ -53,6 +52,10 @@ class RequestMetadata:
             return parse.hostname
         except ValueError:
             return None
+
+    def get_remote(self) -> Optional[str]:
+        if self.remote:
+            return self.remote.split(',', 1)[0] or None
 
     def to_json_dict(self):
         return asdict(self)

@@ -339,7 +339,7 @@ class PgsqlPoolStore(AbstractPoolStore):
                         partial_payload.harvester_id.hex(),
                         partial_payload.proof_of_space.get_plot_id().hex(),
                         ((req_metadata.get_chia_version() or '')[:20] or None) if req_metadata else None,
-                        (req_metadata.remote or None) if req_metadata else None,
+                        req_metadata.get_remote() if req_metadata else None,
                         req_metadata.get_host() if req_metadata else None,
                     ),
                 )
