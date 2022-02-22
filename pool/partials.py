@@ -130,9 +130,9 @@ class PartialsCache(dict):
             filter(lambda x: x[0] >= last_8h, self[launcher_id].partials),
         ))
 
-        estimated_size = self.partials.calculate_estimated_size(points)
+        estimated_size_24h = self.partials.calculate_estimated_size(points)
         estimated_size_8h = self.partials.calculate_estimated_size(points_8h, time_target_8h)
-        estimated_size = int((estimated_size + estimated_size_8h) / 2)
+        estimated_size = int((estimated_size_24h + estimated_size_8h) / 2)
 
         share_pplns = Decimal(points) / Decimal(self.all.points)
         logger.info(
@@ -146,7 +146,7 @@ class PartialsCache(dict):
             launcher_id, estimated_size, points, share_pplns
         )
 
-        asyncio.create_task(self.store_ts.add_launcher_size(launcher_id, estimated_size, estimated_size_8h))
+        asyncio.create_task(self.store_ts.add_launcher_size(launcher_id, estimated_size_24h, estimated_size_8h))
 
 
 class Partials(object):
@@ -328,7 +328,8 @@ class Partials(object):
             self.cache.pop(lid, None)
         await self.scrub()
 
-    async def add_partial(self,
+    async def add_partial(
+        self,
         partial_payload: PostPartialPayload,
         req_metadata: Optional[RequestMetadata],
         timestamp: uint64,
