@@ -298,7 +298,7 @@ class Pool:
         self.missing_partials_loop_task = asyncio.create_task(
             self.partials.missing_partials_loop(launchers_singleton)
         )
-        self.xchprice_loop_task = asyncio.create_task(XCHPrice(self.store).loop())
+        self.xchprice_loop_task = asyncio.create_task(XCHPrice(self.store, self.store_ts).loop())
 
     async def stop(self):
         if self.confirm_partials_loop_task is not None:
@@ -420,6 +420,10 @@ class Pool:
                         for i in self.wallets
                     ]),
                 }))
+
+                asyncio.create_task(
+                    self.store_ts.add_netspace(int(self.blockchain_state['space']))
+                )
 
                 await asyncio.sleep(30)
             except asyncio.CancelledError:

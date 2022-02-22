@@ -8,8 +8,9 @@ logger = logging.getLogger('xchprice')
 
 class XCHPrice(object):
 
-    def __init__(self, store):
+    def __init__(self, store, store_ts):
         self.store = store
+        self.store_ts = store_ts
         self.current_price = None
 
     async def loop(self):
@@ -31,6 +32,7 @@ class XCHPrice(object):
                     data = await r.json()
                     self.current_price = data['market_data']['current_price']
                     await self.store.set_globalinfo({'xch_current_price': json.dumps(self.current_price)})
+                    await self.store_ts.add_xchprice(self.current_price)
             except Exception:
                 logger.error('Failed to get XCH price', exc_info=True)
-            await asyncio.sleep(60)
+            await asyncio.sleep(120)
