@@ -47,7 +47,7 @@ class InfluxdbStore(object):
         return await self._write(bucket=self.bucket, record=p)
 
     async def add_netspace(self, size: int):
-        p = Point('netspace').field('size', size)
+        p = Point('netspace').field('size', size / 1024 / 1024)
         return await self._write(bucket=self.bucket, record=p)
 
     async def add_xchprice(self, xch_price: Dict):
