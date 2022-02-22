@@ -3,7 +3,7 @@ import concurrent.futures
 import functools
 import logging
 
-from typing import Optional, Set, List, Tuple, Dict
+from typing import Dict
 
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
@@ -47,10 +47,10 @@ class InfluxdbStore(object):
         return await self._write(bucket=self.bucket, record=p)
 
     async def add_netspace(self, size: int):
-        p = Point('netspace').field('size', v)
+        p = Point('netspace').field('size', size)
         return await self._write(bucket=self.bucket, record=p)
 
     async def add_xchprice(self, xch_price: Dict):
         p = Point('xchprice').field('usd', xch_price['usd']).field('eur', xch_price['eur']).field(
-            'gbp', xch_price['gbp']).field('btc', xch_price['btc']).field('eth', xch_price['eth')
+            'gbp', xch_price['gbp']).field('btc', xch_price['btc']).field('eth', xch_price['eth'])
         return await self._write(bucket=self.bucket, record=p)
