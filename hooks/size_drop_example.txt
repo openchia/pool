@@ -1,0 +1,14 @@
+Subject: OpenChia.io: Farm dropped in size
+From: contact@openchia.io
+To: %(to)s
+
+Greetings fellow farmer!
+
+We have identified your launcher id %(launcher_id)s has dropped %(rate)s% in size in the last %(interval)s minutes.
+
+Please make sure your farm is set up correctly, harvesters or disks have not failed and there are no network issues.
+
+Cheers!
+
+OpenChia.io Team
+https://openchia.io

@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import functools
 import logging
+import textwrap
 
 from typing import Dict
 
@@ -29,6 +30,11 @@ class InfluxdbStore(object):
         self.write_api = self.client.write_api(write_options=SYNCHRONOUS)
         self.query_api = self.client.query_api()
 
+    async def _query(self, *args, **kwargs):
+        return await self._loop.run_in_executor(
+            self._executor, functools.partial(self.query_api.query, *args, **kwargs)
+        )
+
     async def _write(self, *args, **kwargs):
         return await self._loop.run_in_executor(
             self._executor, functools.partial(self.write_api.write, *args, **kwargs)
@@ -54,3 +60,21 @@ class InfluxdbStore(object):
         p = Point('xchprice').field('usd', xch_price['usd']).field('eur', xch_price['eur']).field(
             'gbp', xch_price['gbp']).field('btc', xch_price['btc']).field('eth', xch_price['eth'])
         return await self._write(bucket=self.bucket, record=p)
+
+    async def get_launcher_sizes(self, launcher_id: str, start: str):
+        q = await self._query(
+            textwrap.dedent('''from(bucket: "openchia")
+              |> range(start: duration(v: _start), stop: now())
+              |> filter(fn: (r) => r["_measurement"] == "launcher_size")
+              |> filter(fn: (r) => r["_field"] == "size_8h")
+              |> filter(fn: (r) => r["launcher"] == _launcher)'''),
+            params={
+                '_start': start,
+                '_launcher': launcher_id,
+            },
+        )
+        rv = []
+        for table in q:
+            for r in table.records:
+                rv.append((r.get_time(), r.get_value()))
+        return rv

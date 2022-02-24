@@ -55,6 +55,7 @@ from .absorb_spend import NoCoinForFee
 from .difficulty_adjustment import get_new_difficulty
 from .fee import get_cost
 from .launchers import LaunchersSingleton
+from .notifications import Notifications
 from .partials import Partials
 from .singleton import (
     create_absorb_transaction,
@@ -102,6 +103,7 @@ class Pool:
 
         self.store: AbstractPoolStore = pool_store or PgsqlPoolStore(pool_config)
         self.store_ts = InfluxdbStore(pool_config)
+        self.notifications = Notifications(self)
         self.partials = Partials(self)
 
         self.pool_fee = pool_config["pool_fee"]
@@ -299,6 +301,8 @@ class Pool:
             self.partials.missing_partials_loop(launchers_singleton)
         )
         self.xchprice_loop_task = asyncio.create_task(XCHPrice(self.store, self.store_ts).loop())
+
+        await self.notifications.start()
 
     async def stop(self):
         if self.confirm_partials_loop_task is not None:

@@ -55,6 +55,9 @@ server:
 #    - ./hooks/discord_absorb.py
 #    - ./hooks/fcm_absorb.py
 #  missing_partials: ./hooks/missing_partials.py
+#  size_drop:
+#    - ./hooks/size_drop_fcm.py
+#    - ./hooks/size_drop_email.py
 #hook_discord_absorb:
 #  url: https://discord.com/api/webhooks/XXX/XXX
 #  username: MyBot
@@ -64,3 +67,5 @@ server:
 #  message_path: ./hooks/missing_partials_example.txt
 #  push_message: "We have identified your launcher id %(launcher_id)s has stopped sending any partials to our pool in the last hour!"
 #  fcm_api_key: foo
+#hook_size_drop:
+#  message_path: ./hooks/size_drop_example.txt

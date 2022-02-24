@@ -1,5 +1,6 @@
 from collections import defaultdict
 from decimal import Decimal
+import datetime
 import json
 import logging
 import math
@@ -787,3 +788,29 @@ class PgsqlPoolStore(AbstractPoolStore):
             (before_timestamp, ),
         )
         return rowcount
+
+    async def get_notifications(self):
+        rv = await self._execute(
+            'SELECT launcher_id, size_drop, size_drop_interval, size_drop_percent,'
+            ' size_drop_last_sent'
+            ' FROM notification WHERE cardinality(size_drop) != 0',
+        )
+        return {
+            i[0]: {
+                'size_drop': i[1],
+                'size_drop_interval': i[2],
+                'size_drop_percent': i[3],
+                'size_drop_last_sent': i[4],
+            }
+            for i in rv
+        }
+
+    async def update_notifications_last_sent(
+        self, launcher_id: str, name: str, when: Optional[datetime.datetime],
+    ):
+        assert name in ('size_drop', )
+        await self._execute(
+            f'UPDATE notification SET {name}_last_sent = %s'
+            ' WHERE launcher_id = %s',
+            (when, launcher_id),
+        )
