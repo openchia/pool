@@ -81,7 +81,7 @@ def payment_targets_to_additions(
         for i in payment:
             amount += i['amount']
             if launcher_min_payment:
-                launcher_min_pay = i.pop('min_payout', None) or 0
+                launcher_min_pay = i.get('min_payout', None) or 0
                 if launcher_min_pay > min_pay:
                     min_pay = launcher_min_pay
 

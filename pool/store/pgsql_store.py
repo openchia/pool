@@ -85,8 +85,8 @@ class PgsqlPoolStore(AbstractPoolStore):
                 if not exists:
                     await cursor.execute(
                         "INSERT INTO farmer ("
-                        "launcher_id, p2_singleton_puzzle_hash, delay_time, delay_puzzle_hash, authentication_public_key, singleton_tip, singleton_tip_state, points, difficulty, payout_instructions, is_pool_member, estimated_size, points_pplns, share_pplns, joined_at, left_at, push_payment, push_block_farmed, custom_difficulty, minimum_payout) VALUES ("
-                        "%s,          %s,                       %s,         %s,                %s,                        %s,            %s,                  0,      %s,         %s,                  %s,             0,              0,            0,           NOW(),     NULL,    false,        true,              NULL,              NULL)",
+                        "launcher_id, p2_singleton_puzzle_hash, delay_time, delay_puzzle_hash, authentication_public_key, singleton_tip, singleton_tip_state, points, difficulty, payout_instructions, is_pool_member, estimated_size, points_pplns, share_pplns, joined_at, left_at, push_block_farmed, custom_difficulty, minimum_payout) VALUES ("
+                        "%s,          %s,                       %s,         %s,                %s,                        %s,            %s,                  0,      %s,         %s,                  %s,             0,              0,            0,           NOW(),     NULL,    true,              NULL,              NULL)",
                         (
                             farmer_record.launcher_id.hex(),
                             farmer_record.p2_singleton_puzzle_hash.hex(),
@@ -639,7 +639,7 @@ class PgsqlPoolStore(AbstractPoolStore):
         payment_targets_per_tx = defaultdict(lambda: defaultdict(list))
         for i in await self._execute(
             'SELECT p.id, t.transaction, p.payout_id, p.puzzle_hash, p.amount, p.fee,'
-            '  f.minimum_payout, f.payout_instructions'
+            '  f.minimum_payout, f.payout_instructions, f.launcher_id'
             ' FROM payout_address p LEFT JOIN transaction t ON p.transaction_id = t.id'
             '  LEFT JOIN farmer f ON p.launcher_id = f.launcher_id'
             ' WHERE p.pool_puzzle_hash = %s AND t.confirmed_block_index IS NULL'
@@ -665,6 +665,7 @@ class PgsqlPoolStore(AbstractPoolStore):
                 "amount": i[4],
                 "fee": i[5],
                 "min_payout": i[6],
+                "launcher_id": i[8],
             })
         return payment_targets_per_tx
 
@@ -789,18 +790,28 @@ class PgsqlPoolStore(AbstractPoolStore):
         )
         return rowcount
 
-    async def get_notifications(self):
+    async def get_notifications(self, launcher_ids: Optional[List[str]] = None):
+        extra = ''
+        if launcher_ids:
+            extra = ' AND n.launcher_id IN ({})'.format(', '.join(
+                [repr(i) for i in launcher_ids]
+            ))
         rv = await self._execute(
-            'SELECT launcher_id, size_drop, size_drop_interval, size_drop_percent,'
-            ' size_drop_last_sent'
-            ' FROM notification WHERE cardinality(size_drop) != 0',
+            'SELECT n.launcher_id, f.fcm_token, f.email, n.size_drop, n.size_drop_interval,'
+            ' n.size_drop_percent, n.size_drop_last_sent, n.payment'
+            ' FROM notification n JOIN farmer f ON n.launcher_id = f.launcher_id'
+            ' WHERE (cardinality(size_drop) != 0 OR cardinality(payment) != 0)'
+            f' {extra}',
         )
         return {
             i[0]: {
-                'size_drop': i[1],
-                'size_drop_interval': i[2],
-                'size_drop_percent': i[3],
-                'size_drop_last_sent': i[4],
+                'fcm_token': i[1],
+                'email': i[2],
+                'size_drop': i[3],
+                'size_drop_interval': i[4],
+                'size_drop_percent': i[5],
+                'size_drop_last_sent': i[6],
+                'payment': i[7],
             }
             for i in rv
         }

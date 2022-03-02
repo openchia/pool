@@ -56,8 +56,11 @@ server:
 #    - ./hooks/fcm_absorb.py
 #  missing_partials: ./hooks/missing_partials.py
 #  size_drop:
-#    - ./hooks/size_drop_fcm.py
 #    - ./hooks/size_drop_email.py
+#    - ./hooks/size_drop_fcm.py
+#  payment:
+#    - ./hooks/payment_email.py
+#    - ./hooks/payment_fcm.py
 #hook_discord_absorb:
 #  url: https://discord.com/api/webhooks/XXX/XXX
 #  username: MyBot
@@ -69,3 +72,5 @@ server:
 #  fcm_api_key: foo
 #hook_size_drop:
 #  message_path: ./hooks/size_drop_example.txt
+#hook_payment:
+#  message_path: ./hooks/payment_example.txt

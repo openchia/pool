@@ -545,6 +545,7 @@ class Pool:
                     if singleton_coin_record is None:
                         continue
                     if singleton_coin_record.spent:
+                        asyncio.create_task(self.get_and_validate_singleton_state(rec.launcher_id))
                         self.log.warning(
                             f"Singleton coin {singleton_coin_record.coin.name()} is spent, will not "
                             f"claim rewards"
@@ -935,6 +936,8 @@ class Pool:
 
                     await self.store.confirm_transaction(transaction, payment_targets)
                     self.log.info(f"Successfully confirmed payments {dict(payment_targets)}")
+
+                    asyncio.create_task(self.notifications.payment(payment_targets))
 
             except asyncio.CancelledError:
                 self.log.info("Cancelled submit_payment_loop, closing")

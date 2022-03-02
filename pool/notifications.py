@@ -1,10 +1,11 @@
 import asyncio
 import logging
 import time
+from collections import defaultdict
 from datetime import datetime
 from typing import Optional
 
-from .task import common_loop
+from .task import common_loop, task_exception
 
 logger = logging.getLogger('notifications')
 
@@ -35,7 +36,9 @@ class Notifications(object):
 
     async def loop_launcher_size_drop(self):
         # FIXME: do not get it every round
-        notifications = await self.store.get_notifications()
+        notifications = dict(filter(
+            lambda x: bool(x[1]['size_drop']), (await self.store.get_notifications()).items()
+        ))
 
         all_enabled = set(notifications.keys())
         existing_enabled = set(self._drop_size_state.keys())
@@ -112,3 +115,18 @@ class Notifications(object):
             await self.store.update_notifications_last_sent(
                 launcher, 'size_drop', datetime.utcnow(),
             )
+
+    @task_exception
+    async def payment(self, payment_targets):
+
+        payments = defaultdict(int)
+        # Only send notification for launchers with a minimum payout
+        for payouts in payment_targets.values():
+            for payout in payouts:
+                if not payout['min_payout']:
+                    continue
+                payments[payout['launcher_id']] += payout['amount']
+
+        print("PAYMENTS!!", payments)
+        if payments:
+            await self.pool.run_hook('payment', payments)

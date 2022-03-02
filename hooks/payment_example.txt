@@ -1,0 +1,14 @@
+Subject: OpenChia.io: Payment sent
+From: contact@openchia.io
+To: %(to)s
+
+Greetings fellow farmer!
+
+Your launcher id %(launcher_id)s was just sent a payment of %(amount)s XCH.
+
+You are receiving this because you have subscribed to receive these notifications. Turn it off in your login page.
+
+Cheers!
+
+OpenChia.io Team
+https://openchia.io
