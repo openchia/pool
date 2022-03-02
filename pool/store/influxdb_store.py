@@ -4,10 +4,14 @@ import functools
 import logging
 import textwrap
 
-from typing import Dict
+from typing import Dict, Optional
+
+from chia.protocols.pool_protocol import PostPartialPayload
+from chia.util.ints import uint64
 
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
+from influxdb_client.domain.write_precision import WritePrecision
 
 from ..task import task_exception
 
@@ -17,9 +21,10 @@ logger = logging.getLogger('influxdb_store')
 class InfluxdbStore(object):
     def __init__(self, pool_config: Dict):
         self.pool_config = pool_config
-        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
         self._loop = asyncio.get_event_loop()
         self.bucket = self.pool_config['influxdb'].get('bucket', 'openchia')
+        self.bucket_partial = self.pool_config['influxdb'].get('bucket_partial', 'openchia_partial')
 
     async def connect(self):
         self.client = InfluxDBClient(
@@ -55,6 +60,20 @@ class InfluxdbStore(object):
     async def add_netspace(self, size: int):
         p = Point('netspace').field('size', size / 1024 / 1024)
         return await self._write(bucket=self.bucket, record=p)
+
+    async def add_partial(
+        self,
+        partial_payload: PostPartialPayload,
+        timestamp: uint64,
+        difficulty: uint64,
+        error: Optional[str] = None,
+    ) -> None:
+        p = Point('partial').time(int(timestamp), WritePrecision.S).tag(
+            'launcher', partial_payload.launcher_id.hex()).tag(
+            'harvester', partial_payload.harvester_id.hex()).tag(
+            'error', error).field(
+            'difficulty', int(difficulty))
+        return await self._write(bucket=self.bucket_partial, record=p)
 
     async def add_xchprice(self, xch_price: Dict):
         p = Point('xchprice').field('usd', xch_price['usd']).field('eur', xch_price['eur']).field(
