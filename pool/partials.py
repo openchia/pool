@@ -170,7 +170,11 @@ class Partials(object):
         )
 
         self.scrub_lock = asyncio.Lock()
-        self.additions = itertools.count()
+
+        self.remove_old_partials_loop_task: Optional[asyncio.Task] = None
+        self.pool_estimated_size_loop_task: Optional[asyncio.Task] = None
+        self.missing_partials_loop_task: Optional[asyncio.Task] = None
+        self.scrub_loop_task: Optional[asyncio.Task] = None
 
     async def load_from_store(self):
         """
@@ -181,6 +185,28 @@ class Partials(object):
             self.cache[lid].add(t, d, remove=False)
             self.cache.all.add(t, d, remove=False)
         await self.store.scrub_pplns(start_time)
+
+    async def start(self, launchers_singleton):
+        self.remove_old_partials_loop_task = asyncio.create_task(
+            self.remove_old_partials_loop()
+        )
+        self.pool_estimated_size_loop_task = asyncio.create_task(
+            self.pool_estimated_size_loop()
+        )
+        self.missing_partials_loop_task = asyncio.create_task(
+            self.missing_partials_loop(launchers_singleton)
+        )
+        self.scrub_loop_task = asyncio.create_task(self.scrub_loop())
+
+    async def stop(self):
+        if self.remove_old_partials_loop_task is not None:
+            self.remove_old_partials_loop_task.cancel()
+        if self.pool_estimated_size_loop_task is not None:
+            self.pool_estimated_size_loop_task.cancel()
+        if self.missing_partials_loop_task is not None:
+            self.missing_partials_loop_task.cancel()
+        if self.scrub_loop_task is not None:
+            self.scrub_loop_task.cancel()
 
     def calculate_estimated_size(self, points, time_target=None):
         if time_target is None:
@@ -214,6 +240,17 @@ class Partials(object):
             now = int(time.time())
             for i in to_update:
                 await self.cache.update_db(i, now)
+
+    async def scrub_loop(self):
+        while True:
+            try:
+                await asyncio.sleep(60 * 2)
+                await self.scrub()
+            except asyncio.CancelledError:
+                logger.info('Cancelled scrub_loop')
+                break
+            except Exception:
+                logger.error('Unexpected error in scrub_loop', exc_info=True)
 
     async def get_pool_size_and_etw(self):
         pool_size = self.calculate_estimated_size(self.cache.all.points)
@@ -346,10 +383,6 @@ class Partials(object):
         # Add to the cache and compute the estimated farm size if a successful partial
         if error is None:
             await self.cache.add(partial_payload.launcher_id.hex(), timestamp, difficulty)
-
-        # FIXME: better parameter to run scrub
-        if next(self.additions) % 20 == 0:
-            await self.scrub()
 
     async def get_recent_partials(self, launcher_id: bytes32, number_of_partials: int):
         """

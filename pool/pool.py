@@ -212,9 +212,6 @@ class Pool:
         self.create_payment_loop_tasks: List[asyncio.Task] = []
         self.submit_payment_loop_tasks: List[asyncio.Task] = []
         self.get_peak_loop_task: Optional[asyncio.Task] = None
-        self.remove_old_partials_loop_tasl: Optional[asyncio.Task] = None
-        self.pool_estimated_size_loop_task: Optional[asyncio.Task] = None
-        self.missing_partials_loop_task: Optional[asyncio.Task] = None
         self.xchprice_loop_task: Optional[asyncio.Task] = None
 
         self.node_rpc_client: Optional[FullNodeRpcClient] = None
@@ -287,18 +284,12 @@ class Pool:
                 asyncio.create_task(self.submit_payment_loop(wallet))
             )
         self.get_peak_loop_task = asyncio.create_task(self.get_peak_loop())
-        self.remove_old_partials_loop_task = asyncio.create_task(
-            self.partials.remove_old_partials_loop()
-        )
-        self.pool_estimated_size_loop_task = asyncio.create_task(
-            self.partials.pool_estimated_size_loop()
-        )
+
         launchers_singleton = LaunchersSingleton(self)
+        await self.partials.start(launchers_singleton)
+
         self.launchers_singleton_state_task = asyncio.create_task(
             launchers_singleton.loop()
-        )
-        self.missing_partials_loop_task = asyncio.create_task(
-            self.partials.missing_partials_loop(launchers_singleton)
         )
         self.xchprice_loop_task = asyncio.create_task(XCHPrice(self.store, self.store_ts).loop())
 
@@ -315,14 +306,11 @@ class Pool:
             submit_payment_loop_task.cancel()
         if self.get_peak_loop_task is not None:
             self.get_peak_loop_task.cancel()
-        if self.remove_old_partials_loop_task is not None:
-            self.remove_old_partials_loop_tasl.cancel()
-        if self.pool_estimated_size_loop_task is not None:
-            self.pool_estimated_size_loop_task.cancel()
+
+        await self.partials.stop()
+
         if self.launchers_singleton_state_task is not None:
             self.launchers_singleton_state_task.cancel()
-        if self.missing_partials_loop_task is not None:
-            self.missing_partials_loop_task.cancel()
         if self.xchprice_loop_task is not None:
             self.xchprice_loop_task.cancel()
 
