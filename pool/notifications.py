@@ -49,7 +49,7 @@ class Notifications(object):
         for i in all_enabled - existing_enabled:
             # Default values
             size_drop_interval = notifications[i].pop('size_drop_interval', None) or 60
-            size_drop_percent = notifications[i].pop('size_drop_percent', None) or 20
+            size_drop_percent = notifications[i].pop('size_drop_percent', None) or 25
 
             self._drop_size_state[i] = dict(
                 last_checked=0,
