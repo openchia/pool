@@ -33,7 +33,7 @@ async def main(payments):
             message_title='Payment sent!',
             message_body=(
                 f'Your launcher id {launcher_id} was just sent a payment of '
-                f'{payments[launcher_id] / 10 ** 12}.'
+                f'{payments[launcher_id] / 10 ** 12} XCH.'
             ),
         )
 
