@@ -146,9 +146,11 @@ class Pool:
             wallet['synced'] = False
             self.wallets.append(wallet)
 
-        # The pool fees will be sent to this address. This MUST be on a different key than the target_puzzle_hash,
-        # otherwise, the fees will be sent to the users. Using 690783650
-        self.pool_fee_puzzle_hash: bytes32 = bytes32(decode_puzzle_hash(pool_config["pool_fee_address"]))
+        # The pool fees will be sent to this address.
+        # This MUST be on a different key than the target_puzzle_hash.
+        self.pool_fee_puzzle_hash: bytes32 = bytes32(decode_puzzle_hash(
+            pool_config["pool_fee_address"]
+        ))
 
         self.payment_fee: bool = pool_config.get('payment_fee')
         self.payment_fee_absolute: int = pool_config.get('payment_fee_absolute')
@@ -692,16 +694,10 @@ class Pool:
                     await asyncio.sleep(self.payment_interval)
                     continue
 
-                pool_coin_amount = int(total_amount_claimed * self.pool_fee)
-                amount_to_distribute = total_amount_claimed - pool_coin_amount
-
                 self.log.info(f"Total amount claimed: {total_amount_claimed / (10 ** 12)}")
-                self.log.info(f"Pool coin amount (includes blockchain fee) {pool_coin_amount  / (10 ** 12)}")
-                self.log.info(f"Total amount to distribute: {amount_to_distribute  / (10 ** 12)}")
 
                 async with self.store.lock:
-                    # Get the points of each farmer, as well as payout instructions. Here a chia address is used,
-                    # but other blockchain addresses can also be used.
+                    # Get the points of each farmer, as well as payout instructions.
                     if self.pool_config.get('reward_system') == 'PPLNS':
                         points_and_ph, total_points = await self.partials.get_farmer_points_and_payout_instructions()
                     else:
@@ -711,46 +707,53 @@ class Pool:
                         total_points = sum([pt for (pt, ph) in points_and_ph])
 
                     total_referral_fees = 0
+                    pool_fee_amount = 0
                     if points_and_ph and total_points > 0:
-                        mojo_per_point = D(amount_to_distribute) / D(total_points)
+                        mojo_per_point = D(total_amount_claimed) / D(total_points)
                         self.log.info(f"Paying out {mojo_per_point} mojo / point")
 
                         referrals = await self.store.get_referrals()
 
                         additions: Dict = {}
                         for points, ph in points_and_ph:
-                            if points > 0:
-                                if ph not in additions:
-                                    additions[ph] = {'amount': 0}
+                            if points <= 0:
+                                continue
 
-                                mojos = floor(points * mojo_per_point)
-                                additions[ph]['amount'] += mojos
+                            if ph not in additions:
+                                additions[ph] = {'amount': 0}
 
-                                if ph in referrals:
-                                    # Calculate original value of the share so we can
-                                    # divide between pool fee and referral fee
-                                    mojos_fee = (D(mojos) / (1 - D(self.pool_fee))) - mojos
-                                    referral_fee = floor(mojos_fee * D(0.2))  # 20% fixed for now
-                                    total_referral_fees += referral_fee
-                                    # Subtract the referral fee from the pool fee
-                                    pool_coin_amount -= referral_fee
+                            mojos = points * mojo_per_point
+                            pool_fee = mojos * D(self.pool_fee)
+                            mojos = floor(mojos - pool_fee)
 
-                                    referral = referrals[ph]
-                                    target_ph = referral['target_payout_instructions']
-                                    if target_ph not in additions:
-                                        additions[target_ph] = {'amount': 0}
+                            additions[ph]['amount'] += mojos
 
-                                    additions[target_ph]['amount'] += referral_fee
+                            if ph in referrals:
+                                # Divide between pool fee and referral fee
+                                referral_fee = pool_fee * D(0.2)  # 20% fixed for now
+                                pool_fee_amount += floor(pool_fee - referral_fee)
 
-                                    additions[ph]['referral'] = referral['id']
-                                    additions[ph]['referral_amount'] = referral_fee
+                                referral_fee = floor(referral_fee)
+                                total_referral_fees += referral_fee
+
+                                referral = referrals[ph]
+                                target_ph = referral['target_payout_instructions']
+                                if target_ph not in additions:
+                                    additions[target_ph] = {'amount': 0}
+
+                                additions[target_ph]['amount'] += referral_fee
+
+                                additions[ph]['referral'] = referral['id']
+                                additions[ph]['referral_amount'] = referral_fee
+                            else:
+                                pool_fee_amount += floor(pool_fee)
 
                         await self.store.add_payout(
                             coin_records,
                             wallet['puzzle_hash'],
                             self.pool_fee_puzzle_hash,
                             total_amount_claimed,
-                            pool_coin_amount,
+                            pool_fee_amount,
                             total_referral_fees,
                             [dict(v, puzzle_hash=k) for k, v in additions.items()],
                         )
@@ -759,6 +762,11 @@ class Pool:
                         await self.store.clear_farmer_points()
                     else:
                         self.log.info(f"No points for any farmer. Waiting {self.payment_interval}")
+
+                amount_to_distribute = total_amount_claimed - pool_fee_amount
+                self.log.info(f"Pool fee amount {pool_fee_amount  / (10 ** 12)}")
+                self.log.info(f"Referral fee amount {total_referral_fees  / (10 ** 12)}")
+                self.log.info(f"Total amount to distribute: {amount_to_distribute  / (10 ** 12)}")
 
                 await asyncio.sleep(self.payment_interval)
             except asyncio.CancelledError:
