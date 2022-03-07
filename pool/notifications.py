@@ -94,6 +94,9 @@ class Notifications(object):
             if start is None or end is None:
                 continue
 
+            if start[1] == 0:
+                continue
+
             # Get the percentage of size decreased
             rate = end[1] / start[1]
 
