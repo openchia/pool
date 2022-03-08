@@ -1,5 +1,7 @@
 import logging
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from decimal import Decimal as D
 from typing import Dict, Mapping, Optional
 from urllib.parse import urlparse
 
@@ -187,3 +189,29 @@ async def create_transaction(
                 additions, coins=list(unspent_coins) + list(non_ph_coins), fee=fee
             )
     return transaction
+
+
+def days_pooling(
+    joined_at: Optional[datetime], left_at: Optional[datetime], is_pool_member: bool,
+) -> int:
+    if not is_pool_member:
+        return 0
+    if not joined_at:
+        joined_at = datetime(2021, 8, 9)
+
+    if not left_at:
+        left_at = datetime.now(timezone.utc)
+
+    return (left_at - joined_at).days
+
+
+def stay_fee_discount(stay_fee_discount: float, stay_fee_length: int, days_passed: int) -> D:
+    if days_passed <= 0:
+        return D('0')
+
+    # fee discount increases every week, not every day
+    days_passed = D((days_passed // 7) * 7)
+
+    passed_pct = min(days_passed / D(stay_fee_length), D('1'))
+
+    return passed_pct * D(stay_fee_discount)

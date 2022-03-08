@@ -393,24 +393,25 @@ class Partials(object):
             for x in reversed(self.cache[launcher_id.hex()].partials[-number_of_partials:])
         ]
 
-    async def get_farmer_points_and_payout_instructions(self):
-        launcher_id_and_ph = await self.store.get_launcher_id_and_payout_instructions(
+    async def get_farmer_points_data(self):
+        launcher_payout_data = await self.store.get_launcher_id_payout_data(
             self.pool_config.get('reward_system')
         )
-        points_and_ph = []
+        points_data = []
         await self.scrub()
         async with self.cache:
             total_points = self.cache.all.points
             for launcher_id, points_interval in self.cache.items():
                 if points_interval.points == 0:
                     continue
-                ph = launcher_id_and_ph.get(launcher_id)
-                if ph is None:
+                payout_data = launcher_payout_data.get(launcher_id)
+                if payout_data is None:
                     logger.error(
                         'Did not find payout instructions for %r, points %d.',
                         launcher_id, points_interval.points,
                     )
                     total_points -= points_interval.points
                     continue
-                points_and_ph.append((uint64(points_interval.points), ph))
-        return points_and_ph, self.cache.all.points
+                payout_data['points'] = uint64(points_interval.points)
+                points_data.append(payout_data)
+        return points_data, self.cache.all.points

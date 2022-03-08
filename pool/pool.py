@@ -68,7 +68,13 @@ from .store.influxdb_store import InfluxdbStore
 from .store.pgsql_store import PgsqlPoolStore
 from .record import FarmerRecord
 from .task import task_exception
-from .util import create_transaction, error_dict, payment_targets_to_additions, RequestMetadata
+from .util import (
+    RequestMetadata,
+    create_transaction,
+    error_dict,
+    payment_targets_to_additions,
+    stay_fee_discount,
+)
 from .xchprice import XCHPrice
 
 SECONDS_PER_BLOCK = (24 * 3600) / 4608
@@ -107,6 +113,8 @@ class Pool:
         self.partials = Partials(self)
 
         self.pool_fee = pool_config["pool_fee"]
+        self.stay_fee_discount: int = pool_config.get('stay_fee_discount') or 0
+        self.stay_fee_length: float = pool_config.get('stay_fee_length') or 0.0
 
         # This number should be held constant and be consistent for every pool in the network. DO NOT CHANGE
         self.iters_limit = self.constants.POOL_SUB_SLOT_ITERS // 64
@@ -699,23 +707,26 @@ class Pool:
                 async with self.store.lock:
                     # Get the points of each farmer, as well as payout instructions.
                     if self.pool_config.get('reward_system') == 'PPLNS':
-                        points_and_ph, total_points = await self.partials.get_farmer_points_and_payout_instructions()
+                        points_data, total_points = await self.partials.get_farmer_points_data()
                     else:
-                        points_and_ph: List[
-                            Tuple[uint64, bytes]
-                        ] = await self.store.get_farmer_points_and_payout_instructions()
-                        total_points = sum([pt for (pt, ph) in points_and_ph])
+                        points_data: List[dict] = await self.store.get_farmer_points_data()
+                        total_points = sum([pd['points'] for pd in points_data])
 
                     total_referral_fees = 0
                     pool_fee_amount = 0
-                    if points_and_ph and total_points > 0:
+                    if points_data and total_points > 0:
                         mojo_per_point = D(total_amount_claimed) / D(total_points)
                         self.log.info(f"Paying out {mojo_per_point} mojo / point")
 
                         referrals = await self.store.get_referrals()
 
                         additions: Dict = {}
-                        for points, ph in points_and_ph:
+                        for i in points_data:
+                            points = i['points']
+                            ph = i['payout_instructions']
+
+                            stay_fee: D = stay_fee_discount(self.stay_fee_discount, self.stay_fee_length, i['days_pooling'])
+
                             if points <= 0:
                                 continue
 
@@ -723,7 +734,8 @@ class Pool:
                                 additions[ph] = {'amount': 0}
 
                             mojos = points * mojo_per_point
-                            pool_fee = mojos * D(self.pool_fee)
+                            pool_fee_pct = D(self.pool_fee) * (1 - stay_fee)
+                            pool_fee = mojos * pool_fee_pct
                             mojos = floor(mojos - pool_fee)
 
                             additions[ph]['amount'] += mojos
@@ -731,7 +743,7 @@ class Pool:
                             if ph in referrals:
                                 # Divide between pool fee and referral fee
                                 referral_fee = pool_fee * D(0.2)  # 20% fixed for now
-                                pool_fee_amount += floor(pool_fee - referral_fee)
+                                pool_fee_amount += pool_fee - referral_fee
 
                                 referral_fee = floor(referral_fee)
                                 total_referral_fees += referral_fee
@@ -746,7 +758,24 @@ class Pool:
                                 additions[ph]['referral'] = referral['id']
                                 additions[ph]['referral_amount'] = referral_fee
                             else:
-                                pool_fee_amount += floor(pool_fee)
+                                pool_fee_amount += pool_fee
+
+                        amount_to_distribute = total_amount_claimed - pool_fee_amount
+
+                        pool_fee_amount = floor(pool_fee_amount)
+                        if pool_fee_amount < 0:
+                            raise RuntimeError(
+                                f'Pool fee amount is negative: {pool_fee_amount  / (10 ** 12)}'
+                            )
+
+                        if total_referral_fees < 0:
+                            raise RuntimeError(
+                                f'Referral amount is negative: {total_referral_fees  / (10 ** 12)}'
+                            )
+
+                        self.log.info(f"Pool fee amount {pool_fee_amount  / (10 ** 12)}")
+                        self.log.info(f"Referral fee amount {total_referral_fees  / (10 ** 12)}")
+                        self.log.info(f"Total amount to distribute: {amount_to_distribute  / (10 ** 12)}")
 
                         await self.store.add_payout(
                             coin_records,
@@ -762,11 +791,6 @@ class Pool:
                         await self.store.clear_farmer_points()
                     else:
                         self.log.info(f"No points for any farmer. Waiting {self.payment_interval}")
-
-                amount_to_distribute = total_amount_claimed - pool_fee_amount
-                self.log.info(f"Pool fee amount {pool_fee_amount  / (10 ** 12)}")
-                self.log.info(f"Referral fee amount {total_referral_fees  / (10 ** 12)}")
-                self.log.info(f"Total amount to distribute: {amount_to_distribute  / (10 ** 12)}")
 
                 await asyncio.sleep(self.payment_interval)
             except asyncio.CancelledError:

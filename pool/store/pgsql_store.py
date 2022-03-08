@@ -18,7 +18,7 @@ from chia.util.ints import uint64
 
 from .abstract import AbstractPoolStore
 from ..record import FarmerRecord
-from ..util import RequestMetadata
+from ..util import RequestMetadata, days_pooling
 
 logger = logging.getLogger('pgsql_store')
 
@@ -244,31 +244,40 @@ class PgsqlPoolStore(AbstractPoolStore):
         )
         return [self._row_to_farmer_record(row) for row in rows]
 
-    async def get_farmer_points_and_payout_instructions(self) -> List[Tuple[uint64, bytes]]:
-        rows = await self._execute("SELECT points, payout_instructions FROM farmer WHERE is_pool_member = true")
+    async def get_farmer_points_data(self) -> List[dict]:
+        rows = await self._execute(
+            'SELECT points, payout_instructions, joined_at, left_at FROM farmer '
+            ' WHERE is_pool_member = true ORDER BY joined_at NULLS FIRST')
         accumulated: Dict[bytes32, uint64] = {}
         for row in rows:
             points: uint64 = uint64(row[0])
             ph: bytes32 = bytes32(bytes.fromhex(row[1]))
             if ph in accumulated:
-                accumulated[ph] += points
+                accumulated[ph]['points'] += points
             else:
-                accumulated[ph] = points
+                accumulated[ph] = {
+                    'points': points,
+                    'days_pooling': days_pooling(row[2], row[3], True),
+                }
 
-        ret: List[Tuple[uint64, bytes32]] = []
-        for ph, total_points in accumulated.items():
-            ret.append((total_points, ph))
+        ret: List[dict] = []
+        for ph, v in accumulated.items():
+            ret.append(dict(payout_instructions=ph, **v))
         return ret
 
-    async def get_launcher_id_and_payout_instructions(self, reward_system) -> dict:
+    async def get_launcher_id_payout_data(self, reward_system) -> dict:
         if reward_system == 'PPLNS':
             field = 'points_pplns'
         else:
             field = 'points'
         return {
-            i[0]: bytes32(bytes.fromhex(i[1]))
+            i[0]: {
+                'payout_instructions': bytes32(bytes.fromhex(i[1])),
+                'days_pooling': days_pooling(i[2], i[3], i[4]),
+            }
             for i in await self._execute(
-                f'SELECT launcher_id, payout_instructions FROM farmer WHERE {field} > 0'
+                'SELECT launcher_id, payout_instructions, joined_at, left_at, is_pool_member '
+                f' FROM farmer WHERE {field} > 0'
             )
         }
 
