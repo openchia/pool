@@ -103,8 +103,6 @@ class PgsqlPoolStore(AbstractPoolStore):
                 else:
                     if exists[1] and not farmer_record.is_pool_member:
                         left_at = ', left_at = NOW()'
-                    elif not exists[1] and farmer_record.is_pool_member:
-                        left_at = ', left_at = NULL'
                     else:
                         left_at = ''
                     await cursor.execute(
@@ -178,8 +176,6 @@ class PgsqlPoolStore(AbstractPoolStore):
 
         if farmer_record.is_pool_member and not is_pool_member:
             left_at = ', left_at = NOW()'
-        elif not farmer_record.is_pool_member and is_pool_member:
-            left_at = ', left_at = NULL'
         else:
             left_at = ''
         await self._execute(
