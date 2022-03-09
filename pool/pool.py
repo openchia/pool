@@ -192,7 +192,8 @@ class Pool:
         # Don't scan anything before this height, for efficiency (for example pool start date)
         self.scan_start_height: uint32 = uint32(pool_config["scan_start_height"])
         self.scan_current_height: uint32 = self.scan_start_height
-        self.scan_move_pending: bool = True
+        self.scan_move_collect_pending: bool = True
+        self.scan_move_payment_pending: bool = True
 
         # Interval for scanning and collecting the pool rewards
         self.collect_pool_rewards_interval = pool_config["collect_pool_rewards_interval"]
@@ -396,7 +397,7 @@ class Pool:
             try:
                 self.blockchain_state = await self.node_rpc_client.get_blockchain_state()
 
-                if not self.scan_move_pending and self.blockchain_state['peak'].height > self.scan_current_height:
+                if not self.scan_move_collect_pending and not self.scan_move_payment_pending and self.blockchain_state['peak'].height > self.scan_current_height:
                     new_scan_height = self.blockchain_state['peak'].height - 500
                     if new_scan_height > self.scan_current_height:
                         self.scan_current_height = uint32(new_scan_height)
@@ -523,9 +524,9 @@ class Pool:
                     self.log.info(f"Not buried amounts: {not_buried_amounts / (10**12)}")
 
                 if claimable_amounts == 0 and not_buried_amounts == 0:
-                    self.scan_move_pending = False
+                    self.scan_move_collect_pending = False
                 else:
-                    self.scan_move_pending = True
+                    self.scan_move_collect_pending = True
 
                 for rec in farmer_records:
                     if not rec.is_pool_member:
@@ -698,9 +699,12 @@ class Pool:
                     await self.run_hook('absorb', absorbs)
 
                 if len(coin_records) == 0:
+                    self.scan_move_payment_pending = False
                     self.log.info("No funds to distribute (wallet %s).", wallet['fingerprint'])
                     await asyncio.sleep(self.payment_interval)
                     continue
+
+                self.scan_move_payment_pending = True
 
                 self.log.info(f"Total amount claimed: {total_amount_claimed / (10 ** 12)}")
 
