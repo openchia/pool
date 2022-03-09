@@ -44,4 +44,3 @@ if __name__ == '__main__':
         print('Not an PAYMENT hook')
         sys.exit(1)
     asyncio.run(main(*sys.argv[2:]))
-    sys.exit(1)
