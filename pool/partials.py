@@ -187,6 +187,7 @@ class Partials(object):
         await self.store.scrub_pplns(start_time)
 
     async def start(self, launchers_singleton):
+        self.launchers_singleton = launchers_singleton
         self.remove_old_partials_loop_task = asyncio.create_task(
             self.remove_old_partials_loop()
         )
@@ -194,7 +195,7 @@ class Partials(object):
             self.pool_estimated_size_loop()
         )
         self.missing_partials_loop_task = asyncio.create_task(
-            self.missing_partials_loop(launchers_singleton)
+            self.missing_partials_loop()
         )
         self.scrub_loop_task = asyncio.create_task(self.scrub_loop())
 
@@ -232,6 +233,10 @@ class Partials(object):
                         before = points_interval.points
                         if points_interval.scrub() == 0:
                             del self.cache[launcher_id]
+                            # Check if NFT is still assigned to pool
+                            await self.launchers_singleton.add_launcher(
+                                bytes32(bytes.fromhex(launcher_id))
+                            )
                         if points_interval.points != before:
                             to_update.append(launcher_id)
 
@@ -298,7 +303,7 @@ class Partials(object):
                 logger.error('Unexpected error in pool_estimated_size_loop', exc_info=True)
             await asyncio.sleep(60 * 30)
 
-    async def missing_partials_loop(self, launchers_singleton):
+    async def missing_partials_loop(self):
         """
         Loop to check for launchers that suddenly stopped sending partials
         """
@@ -344,7 +349,7 @@ class Partials(object):
 
                         if rec.is_pool_member:
                             # Check if farmer is still a pool member
-                            await launchers_singleton.add_launcher(rec.launcher_id)
+                            await self.launchers_singleton.add_launcher(rec.launcher_id)
                     if farmer_records:
                         logger.debug('%d launchers stopped sending partials.', len(farmer_records))
                         await self.pool.run_hook('missing_partials', farmer_records)
