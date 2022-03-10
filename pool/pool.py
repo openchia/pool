@@ -643,6 +643,9 @@ class Pool:
                 absorbs = []
                 for c in list(coin_records):
 
+                    if c.coin.amount == 0:
+                        continue
+
                     if c.confirmed_block_index > peak_height - self.confirmation_security_threshold:
                         # Skip unburied coins
                         coin_records.remove(c)
