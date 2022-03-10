@@ -152,6 +152,7 @@ class Pool:
             wallet['hostname'] = wallet.get("hostname") or self.config["self_hostname"]
             wallet['ssl_dir'] = wallet.get("ssl_dir")
             wallet['synced'] = False
+            wallet['balance'] = None
             self.wallets.append(wallet)
 
         # The pool fees will be sent to this address.
@@ -259,7 +260,10 @@ class Pool:
                 wallet['rpc_client'] = await WalletRpcClient.create(
                     wallet['hostname'], uint16(wallet['rpc_port']), DEFAULT_ROOT_PATH, self.config
                 )
-            wallet['synced'] = await wallet['rpc_client'].get_synced()
+            try:
+                wallet['synced'] = await wallet['rpc_client'].get_synced()
+            except Exception:
+                wallet['synced'] = False
 
         while True:
             try:
