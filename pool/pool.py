@@ -644,6 +644,7 @@ class Pool:
                 for c in list(coin_records):
 
                     if c.coin.amount == 0:
+                        coin_records.remove(c)
                         continue
 
                     if c.confirmed_block_index > peak_height - self.confirmation_security_threshold:
