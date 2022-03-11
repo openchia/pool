@@ -54,7 +54,12 @@ server:
   url: 127.0.0.1
   token:
   org:
-
+  
+ 
+database_host: 127.0.0.1
+database_user: 
+database_password: 
+database_name: 
 
 #database_dsn: postgresql://pooldb:pooldbpassword@postgresql:5432/pooldb?sslmode=require
 
