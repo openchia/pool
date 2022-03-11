@@ -49,13 +49,10 @@ server:
   server_use_ssl: false
   server_ssl_crt: config/ssl/domain/domain_srv.crt
   server_ssl_key: config/ssl/domain/domain_srv.key
-  
  influxdb:
   url: 127.0.0.1
   token:
   org:
-  
- 
 database_host: 127.0.0.1
 database_user: 
 database_password: 
