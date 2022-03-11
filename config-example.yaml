@@ -52,6 +52,8 @@ server:
   
  influxdb:
   url: 127.0.0.1
+  token:
+  org:
 
 
 #database_dsn: postgresql://pooldb:pooldbpassword@postgresql:5432/pooldb?sslmode=require
