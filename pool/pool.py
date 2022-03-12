@@ -68,6 +68,7 @@ from .store.influxdb_store import InfluxdbStore
 from .store.pgsql_store import PgsqlPoolStore
 from .record import FarmerRecord
 from .task import task_exception
+from .types import AbsorbFee
 from .util import (
     RequestMetadata,
     create_transaction,
@@ -163,7 +164,18 @@ class Pool:
 
         self.payment_fee: bool = pool_config.get('payment_fee')
         self.payment_fee_absolute: int = pool_config.get('payment_fee_absolute')
-        self.absorb_fee: bool = pool_config.get('absorb_fee')
+
+        # may be False, True or "auto"
+        absorb_fee = pool_config.get('absorb_fee')
+        absorb_fee_t = str(absorb_fee).upper()
+        try:
+            self.absorb_fee: AbsorbFee = AbsorbFee.__members__[absorb_fee_t]
+        except KeyError:
+            raise RuntimeError(
+                f'Invalid absorb_fee: {absorb_fee}. Valid values: '
+                ', '.join(list(AbsorbFee.__members__.keys()))
+            )
+
         self.absorb_fee_absolute: Optional[int] = pool_config.get('absorb_fee_absolute')
         self.min_payment: int = pool_config.get('min_payment', 0)
 

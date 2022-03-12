@@ -27,6 +27,7 @@ from chia.util.ints import uint32, uint64
 
 from .absorb_spend import spend_with_fee
 from .record import FarmerRecord
+from .types import AbsorbFee
 
 logger = logging.getLogger('singleton')
 
@@ -158,7 +159,7 @@ async def create_absorb_transaction(
     farmer_record: FarmerRecord,
     peak_height: uint32,
     reward_coin_records: List[CoinRecord],
-    fee: bool,
+    fee: AbsorbFee,
     absolute_fee: Optional[int],
     constants: ConsensusConstants,
 ) -> Optional[SpendBundle]:
@@ -204,7 +205,18 @@ async def create_absorb_transaction(
     if len(all_spends) == 0:
         return None
 
-    if fee:
+    if fee == AbsorbFee.AUTO:
+        # TODO: use mempool cost vs number of txs
+        tx_ids: int = len(await node_rpc_client.get_all_mempool_tx_ids())
+        if tx_ids > 20:
+            with_fee = True
+        else:
+            with_fee = False
+        logger.info('Absorb fee is AUTO. %d txs in mempool. Fees: %r', tx_ids, with_fee)
+    else:
+        with_fee = fee == AbsorbFee.TRUE
+
+    if with_fee != AbsorbFee.FALSE:
         return await spend_with_fee(node_rpc_client, wallets, all_spends, constants, absolute_fee)
     else:
         return SpendBundle(all_spends, G2Element())
