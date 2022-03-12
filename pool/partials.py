@@ -291,7 +291,10 @@ class Partials(object):
                 points_per_pool_host['global'] = sum(points_per_pool_host.values())
 
                 size_per_pool_host = {}
-                for k, v in points_per_pool_host.items():
+                for k, v in list(points_per_pool_host.items()):
+                    if k is None:
+                        logger.warning('None pool host with size %d', v)
+                        continue
                     size_per_pool_host[k] = self.calculate_estimated_size(v)
 
                 await self.store.set_pool_size(size_per_pool_host['global'])
