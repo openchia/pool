@@ -1,7 +1,6 @@
 from chia.full_node.bundle_tools import simple_solution_generator
 from chia.full_node.mempool_check_conditions import get_name_puzzle_conditions
 from chia.types.spend_bundle import SpendBundle
-from chia.types.blockchain_format.program import SerializedProgram
 
 
 async def get_cost(bundle: SpendBundle, constants) -> None:
@@ -12,10 +11,13 @@ async def get_cost(bundle: SpendBundle, constants) -> None:
     program = simple_solution_generator(bundle)
     npc_result = get_name_puzzle_conditions(
         program,
-        constants.MAX_BLOCK_COST_CLVM * 0.5,
+        constants.MAX_BLOCK_COST_CLVM,
         cost_per_byte=constants.COST_PER_BYTE,
         mempool_mode=True,
     )
+    if npc_result is not None and npc_result.error is not None:
+        raise RuntimeError(f'rpc result error: {npc_result.error}')
+
     cost = npc_result.cost
 
     if cost >= (0.5 * constants.MAX_BLOCK_COST_CLVM):
