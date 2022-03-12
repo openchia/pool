@@ -197,7 +197,7 @@ def days_pooling(
     if not is_pool_member:
         return 0
     if not joined_at:
-        joined_at = datetime(2021, 8, 9)
+        joined_at = datetime(2021, 8, 9, tzinfo=timezone.utc)
 
     if not left_at:
         left_at = datetime.now(timezone.utc)
