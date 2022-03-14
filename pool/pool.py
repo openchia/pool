@@ -500,15 +500,11 @@ class Pool:
                 )
                 ph_to_amounts: Dict[bytes32, int] = {}
                 ph_to_coins: Dict[bytes32, List[CoinRecord]] = {}
-                not_buried_amounts = 0
                 for cr in coin_records:
                     if not cr.coinbase:
                         self.log.info(f"Non coinbase coin: {cr.coin}, ignoring")
                         continue
 
-                    if cr.confirmed_block_index > peak_height - self.confirmation_security_threshold:
-                        not_buried_amounts += cr.coin.amount
-                        continue
                     if cr.coin.puzzle_hash not in ph_to_amounts:
                         ph_to_amounts[cr.coin.puzzle_hash] = 0
                         ph_to_coins[cr.coin.puzzle_hash] = []
@@ -537,9 +533,8 @@ class Pool:
                 if len(coin_records) > 0:
                     self.log.info(f"Claimable amount: {claimable_amounts / (10**12)}")
                     self.log.info(f"Not claimable amount: {not_claimable_amounts / (10**12)}")
-                    self.log.info(f"Not buried amounts: {not_buried_amounts / (10**12)}")
 
-                if claimable_amounts == 0 and not_buried_amounts == 0:
+                if claimable_amounts == 0:
                     self.scan_move_collect_pending = False
                 else:
                     self.scan_move_collect_pending = True
