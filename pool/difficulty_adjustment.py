@@ -40,9 +40,9 @@ def get_new_difficulty(
     elif custom_difficulty == 'LOW':
         number_of_partials_target = int(number_of_partials_target * 1.5)
     elif custom_difficulty == 'HIGH':
-        number_of_partials_target = int(number_of_partials_target / 0.75)
+        number_of_partials_target = int(number_of_partials_target * 0.75)
     elif custom_difficulty == 'HIGHEST':
-        number_of_partials_target = int(number_of_partials_target / 0.5)
+        number_of_partials_target = int(number_of_partials_target * 0.5)
 
     # If we don't have enough partials at this difficulty and time between last and
     # 1st partials is below target time, don't update yet
