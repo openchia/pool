@@ -336,6 +336,7 @@ def main():
     handlers = ["console"]
     if args.log_file:
         handlers.append("file")
+        handlers.append("file_json")
 
     logging.config.dictConfig({
         "version": 1,
@@ -360,11 +361,24 @@ def main():
                 "backupCount": 5,
                 "formatter": "colored",
             },
+            "file_json": {
+                "level": args.log_level,
+                "class": "logging.handlers.RotatingFileHandler",
+                "filename": f'{args.log_file}.json' or "/dev/null",
+                "maxBytes": 5 * 1024 * 1024,
+                "backupCount": 5,
+                "formatter": "json",
+            },
         },
         "formatters": {
             "colored": {
                 "()": "colorlog.ColoredFormatter",
                 "format": "[%(asctime)s] (%(log_color)s%(levelname)-8s%(reset)s) %(name)s.%(funcName)s():%(lineno)d - %(message)s",
+            },
+            "json": {
+                "()": "pythonjsonlogger.jsonlogger.JsonFormatter",
+                "format": "%(message)s %(levelname)s %(name)s %(funcName)s %(lineno)d",
+                "timestamp": True,
             },
         }
     })

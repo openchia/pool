@@ -7,3 +7,4 @@ aiohttp~=3.7.4
 pytest==6.2.4
 cachetools==4.2.2
 influxdb_client==1.25.0
+python-json-logger==2.0.2
