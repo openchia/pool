@@ -110,9 +110,33 @@ class Pool:
         self.notifications = Notifications(self)
         self.partials = Partials(self)
 
-        self.pool_fee = pool_config["pool_fee"]
-        self.stay_fee_discount: int = pool_config.get('stay_fee_discount') or 0
-        self.stay_fee_length: float = pool_config.get('stay_fee_length') or 0.0
+        fee = pool_config.get('fee') or {}
+
+        self.pool_fee = fee['pool']
+        self.stay_fee_discount: int = fee.get('stay_discount') or 0
+        self.stay_fee_length: float = fee.get('stay_length') or 0.0
+
+        # The pool fees will be sent to this address.
+        # This MUST be on a different key than the target_puzzle_hash.
+        self.pool_fee_puzzle_hash: bytes32 = bytes32(decode_puzzle_hash(
+            fee["address"]
+        ))
+
+        self.payment_fee: bool = fee.get('payment') or False
+        self.payment_fee_absolute: int = fee.get('payment_absolute') or 0
+
+        # may be False, True or "auto"
+        absorb_fee = fee.get('absorb')
+        absorb_fee_t = str(absorb_fee).upper()
+        try:
+            self.absorb_fee: AbsorbFee = AbsorbFee.__members__[absorb_fee_t]
+        except KeyError:
+            raise RuntimeError(
+                f'Invalid absorb_fee: {absorb_fee}. Valid values: '
+                ', '.join(list(AbsorbFee.__members__.keys()))
+            )
+
+        self.absorb_fee_absolute: Optional[int] = fee.get('absorb_absolute')
 
         # This number should be held constant and be consistent for every pool in the network. DO NOT CHANGE
         self.iters_limit = self.constants.POOL_SUB_SLOT_ITERS // 64
@@ -153,27 +177,6 @@ class Pool:
             wallet['balance'] = None
             self.wallets.append(wallet)
 
-        # The pool fees will be sent to this address.
-        # This MUST be on a different key than the target_puzzle_hash.
-        self.pool_fee_puzzle_hash: bytes32 = bytes32(decode_puzzle_hash(
-            pool_config["pool_fee_address"]
-        ))
-
-        self.payment_fee: bool = pool_config.get('payment_fee')
-        self.payment_fee_absolute: int = pool_config.get('payment_fee_absolute')
-
-        # may be False, True or "auto"
-        absorb_fee = pool_config.get('absorb_fee')
-        absorb_fee_t = str(absorb_fee).upper()
-        try:
-            self.absorb_fee: AbsorbFee = AbsorbFee.__members__[absorb_fee_t]
-        except KeyError:
-            raise RuntimeError(
-                f'Invalid absorb_fee: {absorb_fee}. Valid values: '
-                ', '.join(list(AbsorbFee.__members__.keys()))
-            )
-
-        self.absorb_fee_absolute: Optional[int] = pool_config.get('absorb_fee_absolute')
         self.min_payment: int = pool_config.get('min_payment', 0)
 
         # Workaround for adding a block for a coin that was already spent from
@@ -918,16 +921,38 @@ class Pool:
                                 launcher_min_payment=launcher_min_payment,
                             )
                         else:
+                            # Take the cost of the payment fee out of the pool fee
                             if self.payment_fee and self.payment_fee_absolute and additions:
+
+                                # Calculate minimum cost automatically
+                                if self.payment_fee_absolute == -1:
+                                    transaction: TransactionRecord = await create_transaction(
+                                        self.node_rpc_client,
+                                        wallet,
+                                        self.store,
+                                        additions,
+                                        uint64(0),
+                                        payment_targets,
+                                    )
+                                    fee_absolute = await get_cost(
+                                        transaction.spend_bundle, self.constants
+                                    ) * 5  # 5 mojos per cost
+                                else:
+                                    fee_absolute = self.payment_fee_absolute
                                 for i in additions:
+                                    # Try to remove the tx free from the pool fee so we dont
+                                    # use an extra amount from the pool wallet.
                                     if i['puzzle_hash'] == self.pool_fee_puzzle_hash:
-                                        i['amount'] -= self.payment_fee_absolute
+                                        i['amount'] -= fee_absolute
                                         if i['amount'] < 0:
                                             raise RuntimeError('Pool fee not big enough to cover absolute payment fee')
                                         break
                                 else:
+                                    # Pool fee may not be in this payment if we are above the max
+                                    # additions per transaction and its split into multiple
                                     self.log.warning('Could not find pool fee address for this payment')
-                                blockchain_fee = uint64(self.payment_fee_absolute)
+                                self.log.info('Using absolute payment fee of %d', fee_absolute)
+                                blockchain_fee = uint64(fee_absolute)
                             else:
                                 blockchain_fee = uint64(0)
 
