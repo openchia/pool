@@ -2,7 +2,7 @@ import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from decimal import Decimal as D
-from typing import Dict, Mapping, Optional
+from typing import Dict, List, Mapping, Optional
 from urllib.parse import urlparse
 
 from chia.protocols.pool_protocol import PoolErrorCode, ErrorResponse
@@ -70,11 +70,11 @@ class RequestMetadata:
 def payment_targets_to_additions(
         payment_targets: Dict, min_payment, launcher_min_payment: bool = True,
         limit: Optional[int] = None,
-):
+) -> List:
     additions = []
     for ph, payment in list(payment_targets.items()):
 
-        if limit and len(additions) > limit:
+        if limit and len(additions) >= limit:
             payment_targets.pop(ph)
             continue
 
