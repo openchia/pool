@@ -202,6 +202,9 @@ def days_pooling(
     if not left_at:
         left_at = datetime.now(timezone.utc)
 
+    if left_at < joined_at:
+        return 0
+
     return (left_at - joined_at).days
 
 
