@@ -5,7 +5,6 @@ import logging
 import logging.config
 import os
 import signal
-import ssl
 import time
 import traceback
 from typing import Dict, Callable, Optional
@@ -53,14 +52,6 @@ def check_authentication_token(launcher_id: bytes32, token: uint64, timeout: uin
             f"authentication_token {token} invalid for farmer {launcher_id.hex()}.",
         )
     return None
-
-
-def get_ssl_context(config):
-    if config["server"]["server_use_ssl"] is False:
-        return None
-    ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-    ssl_context.load_cert_chain(config["server"]["server_ssl_crt"], config["server"]["server_ssl_key"])
-    return ssl_context
 
 
 class PoolServer:
@@ -289,12 +280,10 @@ async def start_pool_server(pool_config_path=None, pool_store: Optional[Abstract
     )
     runner = aiohttp.web.AppRunner(app, access_log=None)
     await runner.setup()
-    ssl_context = get_ssl_context(server.pool_config)
     site = aiohttp.web.TCPSite(
         runner,
         host=server.host,
         port=server.port,
-        ssl_context=ssl_context,
     )
     await site.start()
 
