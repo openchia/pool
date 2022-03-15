@@ -39,6 +39,7 @@ async def spend_with_fee(
     spends: List[CoinSpend],
     constants: ConsensusConstants,
     absolute_fee: Optional[int],
+    mojos_per_cost: int,
 ):
 
     rewarded_coin: Coin = spends[0].additions()[-1]
@@ -108,7 +109,7 @@ async def spend_with_fee(
     if absolute_fee:
         return sb
 
-    fee = uint64((await get_cost(sb, constants)) * 5)
+    fee = uint64((await get_cost(sb, constants)) * mojos_per_cost)
 
     if fee > spend_coin.amount:
         raise RuntimeError(

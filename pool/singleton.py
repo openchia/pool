@@ -161,6 +161,7 @@ async def create_absorb_transaction(
     reward_coin_records: List[CoinRecord],
     fee: AbsorbFee,
     absolute_fee: Optional[int],
+    mojos_per_cost: int,
     constants: ConsensusConstants,
 ) -> Optional[SpendBundle]:
     singleton_state_tuple: Optional[Tuple[CoinSpend, PoolState, PoolState]] = await get_singleton_state(
@@ -217,7 +218,7 @@ async def create_absorb_transaction(
         with_fee = fee == AbsorbFee.TRUE
 
     if with_fee != AbsorbFee.FALSE:
-        return await spend_with_fee(node_rpc_client, wallets, all_spends, constants, absolute_fee)
+        return await spend_with_fee(node_rpc_client, wallets, all_spends, constants, absolute_fee, mojos_per_cost)
     else:
         return SpendBundle(all_spends, G2Element())
 

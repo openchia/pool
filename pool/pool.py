@@ -113,6 +113,7 @@ class Pool:
         fee = pool_config.get('fee') or {}
 
         self.pool_fee = fee['pool']
+        self.mojos_per_cost = fee.get('mojos_per_cost') or 5
         self.stay_fee_discount: int = fee.get('stay_discount') or 0
         self.stay_fee_length: float = fee.get('stay_length') or 0.0
 
@@ -582,6 +583,7 @@ class Pool:
                             coins_to_absorb,
                             self.absorb_fee,
                             self.absorb_fee_absolute,
+                            self.mojos_per_cost,
                             self.constants,
                         )
                     except NoCoinForFee:
@@ -597,6 +599,7 @@ class Pool:
                             coins_to_absorb,
                             False,
                             0,
+                            self.mojos_per_cost,
                             self.constants,
                         )
 
@@ -901,7 +904,9 @@ class Pool:
                             transaction: TransactionRecord = await wallet['rpc_client'].create_signed_transaction(
                                 additions, fee=25000000 * len(additions),  # Estimated fee
                             )
-                            total_cost = await get_cost(transaction.spend_bundle, self.constants) * 5  # 5 mojos per cost
+                            total_cost = (await get_cost(
+                                transaction.spend_bundle, self.constants
+                            )) * self.mojos_per_cost
                             cost_per_target = math.ceil(D(total_cost) / D(len(payment_targets)))
                             # Recalculate fee after ceiling value per target
                             blockchain_fee = uint64(cost_per_target * len(payment_targets))
@@ -934,9 +939,9 @@ class Pool:
                                         uint64(0),
                                         payment_targets,
                                     )
-                                    fee_absolute = await get_cost(
+                                    fee_absolute = (await get_cost(
                                         transaction.spend_bundle, self.constants
-                                    ) * 5  # 5 mojos per cost
+                                    )) * self.mojos_per_cost
                                 else:
                                     fee_absolute = self.payment_fee_absolute
                                 for i in additions:
