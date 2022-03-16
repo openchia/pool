@@ -32,8 +32,10 @@ from chia.types.coin_record import CoinRecord
 from chia.types.coin_spend import CoinSpend
 from chia.util.bech32m import decode_puzzle_hash
 from chia.consensus.constants import ConsensusConstants
+from chia.consensus.default_constants import DEFAULT_CONSTANTS
 from chia.util.ints import uint8, uint16, uint32, uint64
 from chia.util.byte_types import hexstr_to_bytes
+from chia.util.config import load_config
 from chia.util.default_root import DEFAULT_ROOT_PATH
 from chia.util.streamable import Streamable
 from chia.rpc.full_node_rpc_client import FullNodeRpcClient
@@ -83,9 +85,7 @@ logger = logging.getLogger('pool')
 class Pool:
     def __init__(
         self,
-        config: Dict,
         pool_config: Dict,
-        constants: ConsensusConstants,
         difficulty_function: Callable = get_new_difficulty,
     ):
         self.follow_singleton_tasks: Dict[bytes32, asyncio.Task] = {}
@@ -100,8 +100,11 @@ class Pool:
         self.info_description = pool_config["pool_info"]["description"]
         self.welcome_message = pool_config["welcome_message"]
 
-        self.config = config
-        self.constants = constants
+        self.config = load_config(DEFAULT_ROOT_PATH, "config.yaml")
+        overrides = self.config["network_overrides"]["constants"][
+            self.config["selected_network"]
+        ]
+        self.constants: ConsensusConstants = DEFAULT_CONSTANTS.replace_str_to_bytes(**overrides)
 
         self.store = PgsqlPoolStore(pool_config)
         self.store_ts = InfluxdbStore(pool_config)

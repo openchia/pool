@@ -27,12 +27,8 @@ from chia.protocols.pool_protocol import (
 from chia.types.blockchain_format.sized_bytes import bytes32
 from chia.util.byte_types import hexstr_to_bytes
 from chia.util.hash import std_hash
-from chia.consensus.default_constants import DEFAULT_CONSTANTS
-from chia.consensus.constants import ConsensusConstants
 from chia.util.json_util import obj_to_response
 from chia.util.ints import uint8, uint64, uint32
-from chia.util.default_root import DEFAULT_ROOT_PATH
-from chia.util.config import load_config
 
 from .record import FarmerRecord
 from .pool import Pool
@@ -54,7 +50,7 @@ def check_authentication_token(launcher_id: bytes32, token: uint64, timeout: uin
 
 
 class PoolServer:
-    def __init__(self, pool_config_path: str, config: Dict, constants: ConsensusConstants):
+    def __init__(self, pool_config_path: str):
 
         # We load our configurations from here
         with open(pool_config_path) as f:
@@ -62,7 +58,7 @@ class PoolServer:
             pool_config['__path__'] = os.path.abspath(pool_config_path)
 
         self.log = logging.getLogger(__name__)
-        self.pool = Pool(config, pool_config, constants)
+        self.pool = Pool(pool_config)
 
         self.pool_config = pool_config
         self.host = pool_config["server"]["server_host"]
@@ -259,10 +255,7 @@ async def start_pool_server(pool_config_path=None):
     global server
     global runner
     global run_forever_task
-    config = load_config(DEFAULT_ROOT_PATH, "config.yaml")
-    overrides = config["network_overrides"]["constants"][config["selected_network"]]
-    constants: ConsensusConstants = DEFAULT_CONSTANTS.replace_str_to_bytes(**overrides)
-    server = PoolServer(pool_config_path, config, constants)
+    server = PoolServer(pool_config_path)
     await server.start()
 
     app = web.Application()
