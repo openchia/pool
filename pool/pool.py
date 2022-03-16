@@ -1076,8 +1076,6 @@ class Pool:
         points_received: uint64,
     ) -> None:
         try:
-            # TODO(pool): these lookups to the full node are not efficient and can be cached, especially for
-            #  scaling to many users
             response = await self.get_signage_point_or_eos(partial)
             if response is None or response["reverted"]:
                 if partial.payload.end_of_sub_slot:
