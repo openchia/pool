@@ -36,7 +36,6 @@ from chia.util.config import load_config
 
 from .record import FarmerRecord
 from .pool import Pool
-from .store.abstract import AbstractPoolStore
 from .util import error_response, RequestMetadata
 
 
@@ -55,7 +54,7 @@ def check_authentication_token(launcher_id: bytes32, token: uint64, timeout: uin
 
 
 class PoolServer:
-    def __init__(self, pool_config_path: str, config: Dict, constants: ConsensusConstants, pool_store: Optional[AbstractPoolStore] = None):
+    def __init__(self, pool_config_path: str, config: Dict, constants: ConsensusConstants):
 
         # We load our configurations from here
         with open(pool_config_path) as f:
@@ -63,7 +62,7 @@ class PoolServer:
             pool_config['__path__'] = os.path.abspath(pool_config_path)
 
         self.log = logging.getLogger(__name__)
-        self.pool = Pool(config, pool_config, constants, pool_store)
+        self.pool = Pool(config, pool_config, constants)
 
         self.pool_config = pool_config
         self.host = pool_config["server"]["server_host"]
@@ -256,14 +255,14 @@ runner: Optional[aiohttp.web.BaseRunner] = None
 run_forever_task = None
 
 
-async def start_pool_server(pool_config_path=None, pool_store: Optional[AbstractPoolStore] = None):
+async def start_pool_server(pool_config_path=None):
     global server
     global runner
     global run_forever_task
     config = load_config(DEFAULT_ROOT_PATH, "config.yaml")
     overrides = config["network_overrides"]["constants"][config["selected_network"]]
     constants: ConsensusConstants = DEFAULT_CONSTANTS.replace_str_to_bytes(**overrides)
-    server = PoolServer(pool_config_path, config, constants, pool_store)
+    server = PoolServer(pool_config_path, config, constants)
     await server.start()
 
     app = web.Application()

@@ -62,7 +62,6 @@ from .singleton import (
     get_coin_spend,
     find_reward_from_coinrecord,
 )
-from .store.abstract import AbstractPoolStore
 from .store.influxdb_store import InfluxdbStore
 from .store.pgsql_store import PgsqlPoolStore
 from .record import FarmerRecord
@@ -87,7 +86,6 @@ class Pool:
         config: Dict,
         pool_config: Dict,
         constants: ConsensusConstants,
-        pool_store: Optional[AbstractPoolStore] = None,
         difficulty_function: Callable = get_new_difficulty,
     ):
         self.follow_singleton_tasks: Dict[bytes32, asyncio.Task] = {}
@@ -105,7 +103,7 @@ class Pool:
         self.config = config
         self.constants = constants
 
-        self.store: AbstractPoolStore = pool_store or PgsqlPoolStore(pool_config)
+        self.store = PgsqlPoolStore(pool_config)
         self.store_ts = InfluxdbStore(pool_config)
         self.notifications = Notifications(self)
         self.partials = Partials(self)

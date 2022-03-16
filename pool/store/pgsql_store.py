@@ -1,3 +1,4 @@
+import asyncio
 from collections import defaultdict
 from decimal import Decimal
 import datetime
@@ -15,16 +16,15 @@ from chia.types.coin_record import CoinRecord
 from chia.types.coin_spend import CoinSpend
 from chia.util.ints import uint64
 
-from .abstract import AbstractPoolStore
 from ..record import FarmerRecord
 from ..util import RequestMetadata, days_pooling
 
 logger = logging.getLogger('pgsql_store')
 
 
-class PgsqlPoolStore(AbstractPoolStore):
+class PgsqlPoolStore(object):
     def __init__(self, pool_config: Dict):
-        super().__init__()
+        self.lock = asyncio.Lock()
         self.pool_config = pool_config
         self.pool = None
 
