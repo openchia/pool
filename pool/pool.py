@@ -1151,7 +1151,13 @@ class Pool:
                 return
 
             async with self.store.lock:
-                farmer_record: Optional[FarmerRecord] = await self.store.get_farmer_record(partial.payload.launcher_id)
+                farmer_record: Optional[FarmerRecord] = await self.store.get_farmer_record(
+                    partial.payload.launcher_id
+                )
+
+                if farmer_record is None:
+                    self.log.info('Unknown launcher %r', partial.payload.launcher_id.hex())
+                    return
 
                 assert (
                     partial.payload.proof_of_space.pool_contract_puzzle_hash == farmer_record.p2_singleton_puzzle_hash
