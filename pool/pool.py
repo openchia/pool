@@ -927,7 +927,7 @@ class Pool:
                                         # Estimated fee
                                         # Two extra additions to account for extra coins
                                         # used to remove the fee.
-                                        uint64(25000000 * len(additions + 2)),
+                                        uint64(25000000 * (len(additions) + 2)),
                                         payment_targets,
                                     )
                                     fee_absolute = (await get_cost(
