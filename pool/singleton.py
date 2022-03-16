@@ -235,21 +235,17 @@ async def find_reward_from_coinrecord(
         return None
 
     block_record: BlockRecord = await node_rpc_client.get_block_record_by_height(coin_record.confirmed_block_index)
-    if block_record.is_transaction_block or True:
+    if block_record.is_transaction_block:
         additions, removals = await node_rpc_client.get_additions_and_removals(
             block_record.header_hash
         )
-        found = None
         for cr in additions:
             if cr.name == coin_record.name:
-                found = cr
                 break
-        reward_coin = None
-        if found:
-            for cr in removals:
-                if cr.spent and cr.spent_block_index == coin_record.confirmed_block_index and \
-                        cr.coin.puzzle_hash == farmer.p2_singleton_puzzle_hash:
-                    reward_coin = cr
-                    break
-        if reward_coin:
-            return reward_coin, farmer
+        else:
+            return
+
+        for cr in removals:
+            if cr.spent and cr.spent_block_index == coin_record.confirmed_block_index and \
+                    cr.coin.puzzle_hash == farmer.p2_singleton_puzzle_hash:
+                return cr, farmer
