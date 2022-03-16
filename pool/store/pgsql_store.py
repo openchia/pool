@@ -3,7 +3,6 @@ from decimal import Decimal
 import datetime
 import json
 import logging
-import math
 from typing import Optional, Set, List, Tuple, Dict
 
 import aiopg
@@ -488,10 +487,10 @@ class PgsqlPoolStore(AbstractPoolStore):
         amount,
         pool_fee,
         referral,
-        payment_targets
+        additions,
     ) -> int:
 
-        assert len(payment_targets) > 0
+        assert len(additions) > 0
 
         payout_id = None
         coin_rewards_added = []
@@ -521,26 +520,17 @@ class PgsqlPoolStore(AbstractPoolStore):
                     (payout_id, coin_record.coin.parent_coin_info.hex()),
                 )
 
-            max_additions = self.pool_config["max_additions_per_transaction"]
-            rounds = math.ceil(len(payment_targets) / max_additions)
+            rv = await self._execute(
+                "INSERT INTO payout_address "
+                "(payout_id, payout_round, fee, tx_fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction_id) "
+                "VALUES "
+                "(%s,        %s,           true, 0,     %s,          %s,               NULL,        %s,     NULL,        0,               NULL) "
+                "RETURNING id",
+                (payout_id, 1, fee_puzzle_hash.hex(), pool_puzzle_hash.hex(), pool_fee),
+            )
+            payout_addresses_ids.append(rv[0][0])
 
-            # We can lose one mojo here due to rounding, but not important
-            pool_fee_per_round = int(pool_fee / rounds)
-
-            payout_round = 1
-            for idx, i in enumerate(payment_targets):
-
-                if idx % max_additions == 0:
-                    payout_round += 1
-                    rv = await self._execute(
-                        "INSERT INTO payout_address "
-                        "(payout_id, payout_round, fee, tx_fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction_id) "
-                        "VALUES "
-                        "(%s,        %s,           true, 0,     %s,          %s,               NULL,        %s,     NULL,        0,               NULL) "
-                        "RETURNING id",
-                        (payout_id, payout_round, fee_puzzle_hash.hex(), pool_puzzle_hash.hex(), pool_fee_per_round),
-                    )
-                    payout_addresses_ids.append(rv[0][0])
+            for i in additions:
 
                 rv = await self._execute(
                     "SELECT launcher_id FROM farmer WHERE payout_instructions = %s "
@@ -555,9 +545,9 @@ class PgsqlPoolStore(AbstractPoolStore):
                     "INSERT INTO payout_address "
                     "(payout_id, payout_round, fee, tx_fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction_id) "
                     "VALUES "
-                    "(%%s,       %%s,          false, %%s,  %%s,         %%s,              %s,          %%s,    %%s,         %%s,             NULL) "
+                    "(%%s,       %%s,          false, 0,    %%s,         %%s,              %s,          %%s,    %%s,         %%s,             NULL) "
                     "RETURNING id" % (farmer,),
-                    (payout_id, payout_round, i.get('tx_fee') or 0, i["puzzle_hash"].hex(), pool_puzzle_hash.hex(), i["amount"], i.get('referral'), i.get('referral_amount') or 0),
+                    (payout_id, 1, i["puzzle_hash"].hex(), pool_puzzle_hash.hex(), i["amount"], i.get('referral'), i.get('referral_amount') or 0),
                 )
                 payout_addresses_ids.append(rv[0][0])
                 if referral := i.get('referral'):
