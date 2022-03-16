@@ -3,7 +3,6 @@ import asyncio
 import json
 import itertools
 import logging
-import math
 import os
 import pathlib
 import shlex
@@ -56,6 +55,7 @@ from .fee import get_cost
 from .launchers import LaunchersSingleton
 from .notifications import Notifications
 from .partials import Partials
+from .payment import subtract_fees
 from .singleton import (
     create_absorb_transaction,
     get_singleton_state,
@@ -893,37 +893,25 @@ class Pool:
                     if tx_id is None:
 
                         # Only allow launcher minimum payment for the first pool wallet
-                        launcher_min_payment = self.wallets[0]['puzzle_hash'] == wallet['puzzle_hash']
+                        enable_launcher_min_payment = (
+                            self.wallets[0]['puzzle_hash'] == wallet['puzzle_hash']
+                        )
                         additions = payment_targets_to_additions(
-                            payment_targets, self.min_payment,
-                            launcher_min_payment=launcher_min_payment,
+                            payment_targets,
+                            self.min_payment,
+                            launcher_min_payment=enable_launcher_min_payment,
                             limit=self.max_additions_per_transaction,
                         )
 
                         if self.payment_fee and not self.payment_fee_absolute and additions:
-                            transaction: TransactionRecord = await wallet['rpc_client'].create_signed_transaction(
-                                additions, fee=25000000 * len(additions),  # Estimated fee
-                            )
-                            total_cost = (await get_cost(
-                                transaction.spend_bundle, self.constants
-                            )) * self.mojos_per_cost
-                            cost_per_target = math.ceil(D(total_cost) / D(len(payment_targets)))
-                            # Recalculate fee after ceiling value per target
-                            blockchain_fee = uint64(cost_per_target * len(payment_targets))
-
-                            for targets in payment_targets.values():
-                                cost_per_payout = math.ceil(cost_per_target / len(targets))
-                                total = 0
-                                for i in targets:
-                                    i['amount'] -= cost_per_payout
-                                    total += i['amount']
-                                    i['tx_fee'] = cost_per_payout
-                                if total <= 0:
-                                    raise RuntimeError('Launcher id does not have enough for a fee payment')
-                            # Redo additions with proper amount this time
-                            additions = payment_targets_to_additions(
-                                payment_targets, self.min_payment,
-                                launcher_min_payment=launcher_min_payment,
+                            additions, blockchain_fee = await subtract_fees(
+                                wallet['rpc_client'],
+                                payment_targets,
+                                additions,
+                                self.min_payment,
+                                self.mojos_per_cost,
+                                enable_launcher_min_payment,
+                                self.constants,
                             )
                         else:
                             # Take the cost of the payment fee out of the pool fee
@@ -936,7 +924,10 @@ class Pool:
                                         wallet,
                                         self.store,
                                         additions,
-                                        uint64(0),
+                                        # Estimated fee
+                                        # Two extra additions to account for extra coins
+                                        # used to remove the fee.
+                                        uint64(25000000 * len(additions + 2)),
                                         payment_targets,
                                     )
                                     fee_absolute = (await get_cost(
@@ -944,18 +935,7 @@ class Pool:
                                     )) * self.mojos_per_cost
                                 else:
                                     fee_absolute = self.payment_fee_absolute
-                                for i in additions:
-                                    # Try to remove the tx free from the pool fee so we dont
-                                    # use an extra amount from the pool wallet.
-                                    if i['puzzle_hash'] == self.pool_fee_puzzle_hash:
-                                        i['amount'] -= fee_absolute
-                                        if i['amount'] < 0:
-                                            raise RuntimeError('Pool fee not big enough to cover absolute payment fee')
-                                        break
-                                else:
-                                    # Pool fee may not be in this payment if we are above the max
-                                    # additions per transaction and its split into multiple
-                                    self.log.warning('Could not find pool fee address for this payment')
+
                                 self.log.info('Using absolute payment fee of %d', fee_absolute)
                                 blockchain_fee = uint64(fee_absolute)
                             else:
