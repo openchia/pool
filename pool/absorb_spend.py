@@ -112,8 +112,8 @@ async def spend_with_fee(
     fee = uint64((await get_cost(sb, constants)) * mojos_per_cost)
 
     if fee > spend_coin.amount:
-        raise RuntimeError(
-            f'Selected fee coin lower than the spend fee ({fee} > {spend_coin.amount})'
+        raise NoCoinForFee(
+            f'Selected fee coin lower than the spend fee ({fee} > {spend_coin.amount})!'
         )
 
     if not spend_reward:

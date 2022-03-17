@@ -215,7 +215,7 @@ async def create_absorb_transaction(
     else:
         with_fee = fee == AbsorbFee.TRUE
 
-    if with_fee != AbsorbFee.FALSE:
+    if with_fee:
         return await spend_with_fee(node_rpc_client, wallets, all_spends, constants, absolute_fee, mojos_per_cost)
     else:
         return SpendBundle(all_spends, G2Element())

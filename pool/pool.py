@@ -603,10 +603,11 @@ class Pool:
                             self.mojos_per_cost,
                             self.constants,
                         )
-                    except NoCoinForFee:
+                    except NoCoinForFee as e:
                         self.log.error(
-                            'No coin in pool wallet for absorb fee. '
-                            'Retrying without fee.'
+                            'No coin in pool wallet for absorb fee (%s). '
+                            'Retrying without fee.',
+                            e,
                         )
                         spend_bundle = await create_absorb_transaction(
                             self.node_rpc_client,
