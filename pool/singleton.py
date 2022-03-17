@@ -161,6 +161,7 @@ async def create_absorb_transaction(
     reward_coin_records: List[CoinRecord],
     fee: AbsorbFee,
     absolute_fee: Optional[int],
+    mempool_full_pct: int,
     mojos_per_cost: int,
     constants: ConsensusConstants,
 ) -> Optional[SpendBundle]:
@@ -207,13 +208,10 @@ async def create_absorb_transaction(
         return None
 
     if fee == AbsorbFee.AUTO:
-        # TODO: use mempool cost vs number of txs
-        tx_ids: int = len(await node_rpc_client.get_all_mempool_tx_ids())
-        if tx_ids > 20:
-            with_fee = True
-        else:
-            with_fee = False
-        logger.info('Absorb fee is AUTO. %d txs in mempool. Fees: %r', tx_ids, with_fee)
+        with_fee = mempool_full_pct > 10
+        logger.info(
+            'Absorb fee is AUTO. Mempool is %d%% full. Fees: %r', mempool_full_pct, with_fee,
+        )
     else:
         with_fee = fee == AbsorbFee.TRUE
 

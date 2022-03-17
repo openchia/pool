@@ -599,6 +599,7 @@ class Pool:
                             coins_to_absorb,
                             self.absorb_fee,
                             self.absorb_fee_absolute,
+                            self.blockchain_mempool_full_pct,
                             self.mojos_per_cost,
                             self.constants,
                         )
@@ -615,6 +616,7 @@ class Pool:
                             coins_to_absorb,
                             False,
                             0,
+                            self.blockchain_mempool_full_pct,
                             self.mojos_per_cost,
                             self.constants,
                         )
