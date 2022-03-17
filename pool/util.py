@@ -144,7 +144,8 @@ async def create_transaction(
     unspent_coins = {cr.coin for cr in filter(lambda x: not x.spent, coin_records)}
 
     # If no reward coins are spent we can use them as sole source coins for the transaction
-    if len(coin_records) == len(unspent_coins):
+    # If there is a fee we will need additional coin. (FIXME)
+    if len(coin_records) == len(unspent_coins) and fee == 0:
         transaction = await wallet['rpc_client'].create_signed_transaction(
             additions, coins=list(unspent_coins), fee=fee
         )
@@ -161,7 +162,7 @@ async def create_transaction(
 
         total_additions = sum(a['amount'] for a in additions)
         total_coins = sum(int(c.amount) for c in list(unspent_coins) + list(non_ph_coins))
-        if total_additions <= total_coins:
+        if total_additions + fee <= total_coins:
             transaction = await wallet['rpc_client'].create_signed_transaction(
                 additions, coins=list(unspent_coins) + list(non_ph_coins), fee=fee
             )
