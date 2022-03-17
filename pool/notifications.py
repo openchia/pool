@@ -44,7 +44,7 @@ class Notifications(object):
         existing_enabled = set(self._drop_size_state.keys())
 
         for i in existing_enabled - all_enabled:
-            existing_enabled.pop(i)
+            existing_enabled.remove(i)
 
         for i in all_enabled - existing_enabled:
             # Default values
