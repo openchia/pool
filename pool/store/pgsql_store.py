@@ -19,7 +19,41 @@ from chia.util.ints import uint64
 from ..record import FarmerRecord
 from ..util import RequestMetadata, days_pooling
 
+# FIXME: hardcoded to 12 hours cool down
+COOLDOWN_LEFT_JOIN_HOURS = 12
 logger = logging.getLogger('pgsql_store')
+
+
+def left_join_cooldown(
+    left_last_at,
+    left_at,
+    is_pool_member,
+    was_pool_member,
+    cooldown_hours: int,
+) -> List:
+
+    sql = []
+
+    now = datetime.datetime.now(tz=datetime.timezone.utc)
+    # Had left the pool and is joining back
+    if is_pool_member and not was_pool_member:
+        restore_left_at = False
+        if left_last_at:
+            hours_left = now - left_last_at
+            hours_left = hours_left / datetime.timedelta(hours=1)
+            # Left for less than the cooldown hours, restore previous left at
+            if hours_left <= cooldown_hours:
+                sql.append(('left_last_at', left_at))
+                restore_left_at = True
+
+        if not restore_left_at:
+            sql.append(('joined_last_at', now))
+
+    elif not is_pool_member and was_pool_member:
+        sql.append(('left_last_at', now))
+        sql.append(('left_at', left_last_at))
+
+    return sql
 
 
 class PgsqlPoolStore(object):
@@ -65,27 +99,33 @@ class PgsqlPoolStore(object):
             row[7],
             row[8],
             row[9],
-            True if row[10] == 1 else False,
-            row[11],
-            row[12],
+            row[10],
+            str(row[11]) if row[11] else None,
+            str(row[12]) if row[12] else None,
             row[13],
             row[14],
             row[15],
             row[16],
             row[17],
             row[18],
+            row[19],
+            row[20],
         )
 
     async def add_farmer_record(self, farmer_record: FarmerRecord, metadata: RequestMetadata):
         async with self.pool.acquire() as conn:
             async with conn.cursor() as cursor:
-                await cursor.execute("SELECT launcher_id, is_pool_member FROM farmer WHERE launcher_id = %s", (farmer_record.launcher_id.hex(),))
+                await cursor.execute(
+                    'SELECT launcher_id, is_pool_member, left_last_at, left_at FROM farmer'
+                    ' WHERE launcher_id = %s',
+                    (farmer_record.launcher_id.hex(),)
+                )
                 exists = await cursor.fetchone()
                 if not exists:
                     await cursor.execute(
                         "INSERT INTO farmer ("
-                        "launcher_id, p2_singleton_puzzle_hash, delay_time, delay_puzzle_hash, authentication_public_key, singleton_tip, singleton_tip_state, points, difficulty, payout_instructions, is_pool_member, estimated_size, points_pplns, share_pplns, joined_at, joined_last_at, left_at, push_block_farmed, custom_difficulty, minimum_payout) VALUES ("
-                        "%s,          %s,                       %s,         %s,                %s,                        %s,            %s,                  0,      %s,         %s,                  %s,             0,              0,            0,           NOW(),     NOW(),          NULL,    true,              NULL,              NULL)",
+                        "launcher_id, p2_singleton_puzzle_hash, delay_time, delay_puzzle_hash, authentication_public_key, singleton_tip, singleton_tip_state, points, difficulty, payout_instructions, is_pool_member, estimated_size, points_pplns, share_pplns, joined_at, joined_last_at, left_at, left_last_at, push_block_farmed, custom_difficulty, minimum_payout) VALUES ("
+                        "%s,          %s,                       %s,         %s,                %s,                        %s,            %s,                  0,      %s,         %s,                  %s,             0,              0,            0,           NOW(),     NOW(),          NULL,    NULL,         true,              NULL,              NULL)",
                         (
                             farmer_record.launcher_id.hex(),
                             farmer_record.p2_singleton_puzzle_hash.hex(),
@@ -100,26 +140,30 @@ class PgsqlPoolStore(object):
                         ),
                     )
                 else:
-                    if exists[1] and not farmer_record.is_pool_member:
-                        join_left = ', left_at = NOW()'
-                    elif not exists[1] and farmer_record.is_pool_member:
-                        join_left = ', joined_last_at = NOW()'
-                    else:
-                        join_left = ''
+                    args = [
+                        farmer_record.p2_singleton_puzzle_hash.hex(),
+                        farmer_record.delay_time,
+                        farmer_record.delay_puzzle_hash.hex(),
+                        bytes(farmer_record.authentication_public_key).hex(),
+                        bytes(farmer_record.singleton_tip),
+                        bytes(farmer_record.singleton_tip_state),
+                        int(farmer_record.difficulty),
+                        farmer_record.payout_instructions,
+                        bool(farmer_record.is_pool_member),
+                        farmer_record.launcher_id.hex(),
+                    ]
+
+                    join_left = ''
+                    for field, value in left_join_cooldown(
+                        exists[2], exists[3], farmer_record.is_pool_member, exists[1],
+                        COOLDOWN_LEFT_JOIN_HOURS,
+                    ):
+                        join_left += f', {field} = %s'
+                        args.insert(-1, value)
+
                     await cursor.execute(
                         f"UPDATE farmer SET p2_singleton_puzzle_hash = %s, delay_time = %s, delay_puzzle_hash = %s, authentication_public_key = %s, singleton_tip = %s, singleton_tip_state = %s, difficulty = %s, payout_instructions = %s, is_pool_member = %s{join_left} WHERE launcher_id = %s",
-                        (
-                            farmer_record.p2_singleton_puzzle_hash.hex(),
-                            farmer_record.delay_time,
-                            farmer_record.delay_puzzle_hash.hex(),
-                            bytes(farmer_record.authentication_public_key).hex(),
-                            bytes(farmer_record.singleton_tip),
-                            bytes(farmer_record.singleton_tip_state),
-                            int(farmer_record.difficulty),
-                            farmer_record.payout_instructions,
-                            bool(farmer_record.is_pool_member),
-                            farmer_record.launcher_id.hex(),
-                        ),
+                        args,
                     )
 
     async def get_farmer_record(self, launcher_id: bytes32) -> Optional[FarmerRecord]:
@@ -175,21 +219,26 @@ class PgsqlPoolStore(object):
         is_pool_member: bool,
     ):
 
-        if farmer_record.is_pool_member and not is_pool_member:
-            join_left = ', left_at = NOW()'
-        elif not farmer_record.is_pool_member and is_pool_member:
-            join_left = ', joined_last_at = NOW()'
-        else:
-            join_left = ''
+        args = [
+            bytes(singleton_tip),
+            bytes(singleton_tip_state),
+            is_pool_member,
+            farmer_record.launcher_id.hex(),
+        ]
+
+        join_left = ''
+        for field, value in left_join_cooldown(
+            farmer_record.left_last_at_datetime, farmer_record.left_at_datetime, is_pool_member,
+            farmer_record.is_pool_member, COOLDOWN_LEFT_JOIN_HOURS,
+        ):
+            join_left += f', {field} = %s'
+            args.insert(-1, value)
+
         await self._execute(
             f'UPDATE farmer SET singleton_tip=%s, singleton_tip_state=%s, is_pool_member=%s{join_left} WHERE launcher_id=%s',
-            (
-                bytes(singleton_tip),
-                bytes(singleton_tip_state),
-                is_pool_member,
-                farmer_record.launcher_id.hex(),
-            ),
+            args,
         )
+
         if singleton_coin:
             await self._execute(
                 'INSERT INTO singleton ('
@@ -224,7 +273,7 @@ class PgsqlPoolStore(object):
         """
         rows = await self._execute(
             "SELECT p2_singleton_puzzle_hash FROM farmer WHERE is_pool_member = true OR ("
-            " is_pool_member = false AND left_at >= NOW() - interval '6 hours'"
+            " is_pool_member = false AND left_last_at >= NOW() - interval '6 hours'"
             ")"
         )
 
@@ -245,7 +294,7 @@ class PgsqlPoolStore(object):
 
     async def get_farmer_points_data(self) -> List[dict]:
         rows = await self._execute(
-            'SELECT points, payout_instructions, joined_last_at, left_at FROM farmer '
+            'SELECT points, payout_instructions, joined_last_at, left_last_at FROM farmer '
             ' WHERE is_pool_member = true ORDER BY joined_last_at NULLS FIRST')
         accumulated: Dict[bytes32, uint64] = {}
         for row in rows:
@@ -275,7 +324,7 @@ class PgsqlPoolStore(object):
                 'days_pooling': days_pooling(i[2], i[3], i[4]),
             }
             for i in await self._execute(
-                'SELECT launcher_id, payout_instructions, joined_last_at, left_at, is_pool_member '
+                'SELECT launcher_id, payout_instructions, joined_last_at, left_last_at, is_pool_member '
                 f' FROM farmer WHERE {field} > 0'
             )
         }

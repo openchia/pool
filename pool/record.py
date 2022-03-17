@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Optional
 
 from blspy import G1Element
@@ -23,6 +24,8 @@ class FarmerRecord(Streamable):
     difficulty: uint64  # Current difficulty for this farmer
     payout_instructions: str  # This is where the pool will pay out rewards to the farmer
     is_pool_member: bool  # If the farmer leaves the pool, this gets set to False
+    left_at: Optional[str]
+    left_last_at: Optional[str]
     email: Optional[str]
     estimated_size: uint64
     name: Optional[str]
@@ -31,3 +34,13 @@ class FarmerRecord(Streamable):
     push_block_farmed: Optional[bool]
     custom_difficulty: Optional[str]
     minimum_payout: Optional[uint64]
+
+    @property
+    def left_at_datetime(self):
+        if self.left_at:
+            return datetime.fromisoformat(self.left_at)
+
+    @property
+    def left_last_at_datetime(self):
+        if self.left_last_at:
+            return datetime.fromisoformat(self.left_last_at)
