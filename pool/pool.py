@@ -68,7 +68,7 @@ from .store.influxdb_store import InfluxdbStore
 from .store.pgsql_store import PgsqlPoolStore
 from .record import FarmerRecord
 from .task import task_exception
-from .types import AbsorbFee
+from .types import AbsorbFee, PaymentFee
 from .util import (
     RequestMetadata,
     create_transaction,
@@ -124,7 +124,16 @@ class Pool:
             fee["address"]
         ))
 
-        self.payment_fee: bool = fee.get('payment') or False
+        # may be False, True or "auto"
+        payment_fee = fee.get('payment')
+        payment_fee_t = str(payment_fee).upper()
+        try:
+            self.payment_fee: PaymentFee = PaymentFee.__members__[payment_fee_t]
+        except KeyError:
+            raise RuntimeError(
+                f'Invalid payment_fee: {payment_fee}. Valid values: '
+                ', '.join(list(PaymentFee.__members__.keys()))
+            )
         self.payment_fee_absolute: int = fee.get('payment_absolute') or 0
 
         # may be False, True or "auto"
@@ -224,7 +233,8 @@ class Pool:
         self.max_additions_per_transaction = pool_config["max_additions_per_transaction"]
 
         # Keeps track of the latest state of our node
-        self.blockchain_state = {"peak": None}
+        self.blockchain_state: Dict = {"peak": None}
+        self.blockchain_mempool_full_pct: int = 0
 
         # We target these many partials for this number of seconds. We adjust after receiving this many partials.
         self.number_of_partials_target: int = pool_config["number_of_partials_target"]
@@ -445,6 +455,11 @@ class Pool:
                 asyncio.create_task(
                     self.store_ts.add_netspace(int(self.blockchain_state['space']))
                 )
+
+                self.blockchain_mempool_full_pct = int((
+                    self.blockchain_state['mempool_cost'] /
+                    self.blockchain_state['mempool_max_total_cost']
+                ) * 100)
 
                 await asyncio.sleep(30)
             except asyncio.CancelledError:
@@ -903,21 +918,26 @@ class Pool:
                             launcher_min_payment=enable_launcher_min_payment,
                             limit=self.max_additions_per_transaction,
                         )
-
-                        if self.payment_fee and not self.payment_fee_absolute and additions:
-                            additions, blockchain_fee = await subtract_fees(
-                                wallet['rpc_client'],
-                                payment_targets,
-                                additions,
-                                self.min_payment,
-                                self.mojos_per_cost,
-                                enable_launcher_min_payment,
-                                self.constants,
-                            )
+                        if self.payment_fee == PaymentFee.AUTO:
+                            payment_fee = self.blockchain_mempool_full_pct > 10
+                            self.log.info('Payment fee is AUTO. Fees? %r', payment_fee)
                         else:
-                            # Take the cost of the payment fee out of the pool fee
-                            if self.payment_fee and self.payment_fee_absolute and additions:
+                            payment_fee = self.payment_fee == PaymentFee.TRUE
 
+                        if payment_fee and additions:
+                            if not self.payment_fee_absolute:
+                                additions, blockchain_fee = await subtract_fees(
+                                    wallet['rpc_client'],
+                                    payment_targets,
+                                    additions,
+                                    self.min_payment,
+                                    self.mojos_per_cost,
+                                    enable_launcher_min_payment,
+                                    self.constants,
+                                )
+
+                            # Take the cost of the payment fee out of the pool wallet
+                            else:
                                 # Calculate minimum cost automatically
                                 if self.payment_fee_absolute == -1:
                                     transaction: TransactionRecord = await create_transaction(
@@ -939,8 +959,8 @@ class Pool:
 
                                 self.log.info('Using absolute payment fee of %d', fee_absolute)
                                 blockchain_fee = uint64(fee_absolute)
-                            else:
-                                blockchain_fee = uint64(0)
+                        else:
+                            blockchain_fee = uint64(0)
 
                         if not additions:
                             self.log.info('No payments above minimum, skipping.')
