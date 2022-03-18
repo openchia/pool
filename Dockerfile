@@ -20,6 +20,7 @@ RUN ./venv/bin/pip install -r requirements.txt
 
 COPY ./pool /root/pool/pool/
 COPY ./hooks /root/pool/hooks/
+COPY ./tools /root/pool/tools/
 
 COPY ./docker/start.sh /root/
 
