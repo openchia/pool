@@ -12,7 +12,7 @@ from asyncio import Task
 from collections import defaultdict
 from decimal import Decimal as D
 from math import floor
-from typing import Dict, Optional, Set, List, Tuple, Callable
+from typing import Dict, Optional, Set, List, Tuple
 
 from blspy import AugSchemeMPL, G1Element
 from chia.pools.pool_wallet_info import PoolState, PoolSingletonState
@@ -83,11 +83,7 @@ logger = logging.getLogger('pool')
 
 
 class Pool:
-    def __init__(
-        self,
-        pool_config: Dict,
-        difficulty_function: Callable = get_new_difficulty,
-    ):
+    def __init__(self, pool_config: Dict):
         self.follow_singleton_tasks: Dict[bytes32, asyncio.Task] = {}
         self.log = logging.getLogger('pool')
 
@@ -111,18 +107,16 @@ class Pool:
         self.notifications = Notifications(self)
         self.partials = Partials(self)
 
-        fee = pool_config.get('fee') or {}
+        fee: Dict = pool_config.get('fee') or {}
 
-        self.pool_fee = fee['pool']
-        self.mojos_per_cost = fee.get('mojos_per_cost') or 5
+        self.pool_fee: float = fee['pool']
+        self.mojos_per_cost: int = fee.get('mojos_per_cost') or 5
         self.stay_fee_discount: int = fee.get('stay_discount') or 0
         self.stay_fee_length: float = fee.get('stay_length') or 0.0
 
         # The pool fees will be sent to this address.
         # This MUST be on a different key than the target_puzzle_hash.
-        self.pool_fee_puzzle_hash: bytes32 = bytes32(decode_puzzle_hash(
-            fee["address"]
-        ))
+        self.pool_fee_puzzle_hash: bytes32 = bytes32(decode_puzzle_hash(fee["address"]))
 
         # may be False, True or "auto"
         payment_fee = fee.get('payment')
@@ -155,12 +149,12 @@ class Pool:
         # This number should not be changed, since users will put this into their singletons
         self.relative_lock_height = uint32(pool_config["relative_lock_height"])
 
-        # TODO(pool): potentially tweak these numbers for security and performance
-        # This is what the user enters into the input field. This exact value will be stored on the blockchain
+        # This is what the user enters into the input field.
+        # This exact value will be stored on the blockchain.
         self.pool_url = pool_config["pool_url"]
-        self.min_difficulty = uint64(pool_config["min_difficulty"])  # 10 difficulty is about 1 proof a day per plot
+        # 10 difficulty is about 1 proof a day per plot
+        self.min_difficulty = uint64(pool_config["min_difficulty"])
         self.default_difficulty: uint64 = uint64(pool_config["default_difficulty"])
-        self.difficulty_function: Callable = difficulty_function
 
         self.pending_point_partials: asyncio.Queue = asyncio.Queue()
         self.recent_points_added: LRUCache = LRUCache(20000)
@@ -168,14 +162,11 @@ class Pool:
         self.recent_signage_point: LRUCache = LRUCache(1000)
         self.recent_eos: LRUCache = LRUCache(1000)
 
-        # The time in minutes for an authentication token to be valid. See "Farmer authentication" in SPECIFICATION.md
+        # The time in minutes for an authentication token to be valid.
         self.authentication_token_timeout: uint8 = pool_config["authentication_token_timeout"]
 
         # This is where the block rewards will get paid out to. The pool needs to support this address forever,
-        # since the farmers will encode it into their singleton on the blockchain. WARNING: the default pool code
-        # completely spends this wallet and distributes it to users, do don't put any additional funds in here
-        # that you do not want to distribute. Even if the funds are in a different address than this one, they WILL
-        # be spent by this code! So only put funds that you want to distribute to pool members here.
+        # since the farmers will encode it into their singleton on the blockchain.
 
         self.default_target_puzzle_hashes: List[bytes32] = []
         self.wallets = []
@@ -1566,7 +1557,7 @@ class Pool:
                     partial.payload.launcher_id, self.number_of_partials_target
                 )
                 # Only update the difficulty if we meet certain conditions
-                new_difficulty: uint64 = self.difficulty_function(
+                new_difficulty: uint64 = get_new_difficulty(
                     recent_partials,
                     int(self.number_of_partials_target),
                     int(self.time_target),
