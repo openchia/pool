@@ -294,8 +294,9 @@ class PgsqlPoolStore(object):
 
     async def get_farmer_points_data(self) -> List[dict]:
         rows = await self._execute(
-            'SELECT points, payout_instructions, joined_last_at, left_last_at FROM farmer '
-            ' WHERE is_pool_member = true ORDER BY joined_last_at NULLS FIRST')
+            'SELECT points, payout_instructions, joined_last_at, left_last_at, estimated_size '
+            ' FROM farmer WHERE is_pool_member = true ORDER BY joined_last_at NULLS FIRST'
+        )
         accumulated: Dict[bytes32, uint64] = {}
         for row in rows:
             points: uint64 = uint64(row[0])
@@ -306,6 +307,7 @@ class PgsqlPoolStore(object):
                 accumulated[ph] = {
                     'points': points,
                     'days_pooling': days_pooling(row[2], row[3], True),
+                    'estimated_size': row[4],
                 }
 
         ret: List[dict] = []
@@ -322,10 +324,11 @@ class PgsqlPoolStore(object):
             i[0]: {
                 'payout_instructions': bytes32(bytes.fromhex(i[1])),
                 'days_pooling': days_pooling(i[2], i[3], i[4]),
+                'estimated_size': i[5],
             }
             for i in await self._execute(
-                'SELECT launcher_id, payout_instructions, joined_last_at, left_last_at, is_pool_member '
-                f' FROM farmer WHERE {field} > 0'
+                'SELECT launcher_id, payout_instructions, joined_last_at, left_last_at,'
+                f' is_pool_member, estimated_size FROM farmer WHERE {field} > 0'
             )
         }
 

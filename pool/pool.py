@@ -74,6 +74,7 @@ from .util import (
     create_transaction,
     error_dict,
     payment_targets_to_additions,
+    size_discount,
     stay_fee_discount,
 )
 from .xchprice import XCHPrice
@@ -113,6 +114,7 @@ class Pool:
         self.mojos_per_cost: int = fee.get('mojos_per_cost') or 5
         self.stay_fee_discount: int = fee.get('stay_discount') or 0
         self.stay_fee_length: float = fee.get('stay_length') or 0.0
+        self.size_fee_discount: Dict[int, float] = fee.get('size_discount') or {}
 
         # The pool fees will be sent to this address.
         # This MUST be on a different key than the target_puzzle_hash.
@@ -757,16 +759,27 @@ class Pool:
                             points = i['points']
                             ph = i['payout_instructions']
 
-                            stay_fee: D = stay_fee_discount(self.stay_fee_discount, self.stay_fee_length, i['days_pooling'])
-
                             if points <= 0:
                                 continue
 
                             if ph not in additions:
                                 additions[ph] = {'amount': 0}
 
+                            stay_fee: D = stay_fee_discount(
+                                self.stay_fee_discount, self.stay_fee_length, i['days_pooling'],
+                            )
+                            size_fee: D = D('0')
+                            if self.size_fee_discount:
+                                size_fee = size_discount(
+                                    i['estimated_size'], self.size_fee_discount,
+                                )
+
                             mojos = points * mojo_per_point
-                            pool_fee_pct = D(self.pool_fee) * (1 - stay_fee)
+                            pool_fee_pct = D(self.pool_fee) * (1 - stay_fee - size_fee)
+
+                            # Just be extra sure pool is getting enough fee
+                            assert pool_fee_pct > self.pool_fee / 2
+
                             pool_fee = mojos * pool_fee_pct
                             mojos = floor(mojos - pool_fee)
 

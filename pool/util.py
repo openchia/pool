@@ -219,3 +219,12 @@ def stay_fee_discount(stay_fee_discount: float, stay_fee_length: int, days_passe
     passed_pct = min(days_passed / D(stay_fee_length), D('1'))
 
     return passed_pct * D(stay_fee_discount)
+
+
+def size_discount(launcher_size: int, size_discount: Dict) -> D:
+    launcher_size_tb = launcher_size / 1024 ** 4
+    for size_tb, discount in reversed(sorted(size_discount.items())):
+        if launcher_size_tb >= size_tb:
+            return D(discount)
+    else:
+        return D('0')

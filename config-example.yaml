@@ -9,6 +9,10 @@ fee:
   address: txch1jhydnk47xl40jn3pgwjd708uk2wqzqexagy9xxjcwt2qeaumv3fqcrw6e2
   stay_discount: 0.1
   stay_length: 365
+  size_discount:
+    200: 0.05
+    500: 0.1
+    1000: 0.15
   payment: false
   #payment_absolute: 1
   absorb: false
