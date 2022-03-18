@@ -805,9 +805,10 @@ class Pool:
                             else:
                                 pool_fee_amount += pool_fee
 
-                        amount_to_distribute = total_amount_claimed - pool_fee_amount
-
                         pool_fee_amount = floor(pool_fee_amount)
+                        amount_to_distribute = sum(map(lambda x: x['amount'], additions.values()))
+                        remainings = total_amount_claimed - amount_to_distribute - pool_fee_amount
+
                         if pool_fee_amount < 0:
                             raise RuntimeError(
                                 f'Pool fee amount is negative: {pool_fee_amount  / (10 ** 12)}'
@@ -821,6 +822,12 @@ class Pool:
                         self.log.info(f"Pool fee amount {pool_fee_amount  / (10 ** 12)}")
                         self.log.info(f"Referral fee amount {total_referral_fees  / (10 ** 12)}")
                         self.log.info(f"Total amount to distribute: {amount_to_distribute  / (10 ** 12)}")
+                        self.log.info(f"Remainings: {remainings  / (10 ** 12)}")
+                        # If more than 0.00001 was left behind there is something off
+                        if remainings > 10 ** 7:
+                            self.log.error('Remainings too high, aborting.')
+                            await asyncio.sleep(60)
+                            continue
 
                         await self.store.add_payout(
                             coin_records,
