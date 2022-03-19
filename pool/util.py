@@ -210,7 +210,7 @@ def days_pooling(
 
 
 def stay_fee_discount(stay_fee_discount: float, stay_fee_length: int, days_passed: int) -> D:
-    if days_passed <= 0:
+    if days_passed <= 0 or stay_fee_length <= 0 or stay_fee_discount <= 0:
         return D('0')
 
     # fee discount increases every week, not every day
