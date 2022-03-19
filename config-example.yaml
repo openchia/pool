@@ -13,6 +13,7 @@ fee:
     200: 0.05
     500: 0.1
     1000: 0.15
+  max_discount: 0.25
   payment: false
   #payment_absolute: 1
   absorb: false
