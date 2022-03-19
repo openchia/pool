@@ -115,7 +115,7 @@ class Pool:
         self.stay_fee_discount: int = fee.get('stay_discount') or 0
         self.stay_fee_length: float = fee.get('stay_length') or 0.0
         self.size_fee_discount: Dict[int, float] = fee.get('size_discount') or {}
-        self.max_fee_discount: float = fee.get('max_discount') or 0.0
+        self.max_fee_discount: D = D(fee.get('max_discount') or 0.0)
 
         # The pool fees will be sent to this address.
         # This MUST be on a different key than the target_puzzle_hash.
@@ -776,7 +776,7 @@ class Pool:
                                 )
 
                             mojos = points * mojo_per_point
-                            fee_discount = max(stay_fee + size_fee, self.max_fee_discount)
+                            fee_discount = min(stay_fee + size_fee, self.max_fee_discount)
                             pool_fee_pct = D(self.pool_fee) * (1 - fee_discount)
 
                             # Just be extra sure pool is getting enough fee
