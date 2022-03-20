@@ -1286,6 +1286,7 @@ class Pool:
                     updated_record,
                     authentication_public_key=request.payload.authentication_public_key,
                 )
+            response_dict['authentication_public_key'] = is_new_pubkey
 
         if request.payload.payout_instructions is not None:
             if is_new_payout := (
@@ -1296,6 +1297,7 @@ class Pool:
                 updated_record = dataclasses.replace(
                     updated_record, payout_instructions=request.payload.payout_instructions,
                 )
+            response_dict['payout_instructions'] = is_new_payout
 
         if updated_record != farmer_record:
             self.log.info(
