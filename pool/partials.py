@@ -422,4 +422,4 @@ class Partials(object):
                     continue
                 payout_data['points'] = uint64(points_interval.points)
                 points_data.append(payout_data)
-        return points_data, self.cache.all.points
+        return points_data, total_points
