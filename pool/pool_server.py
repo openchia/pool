@@ -197,14 +197,10 @@ class PoolServer:
         if authentication_token_error is not None:
             return authentication_token_error
 
-        # Process the request
-        put_farmer_response = await self.pool.update_farmer(put_farmer_request,
-                                                            self.post_metadata_from_request(request_obj))
-
-        self.pool.log.info(
-            f"put_farmer response {put_farmer_response}, "
-            f"launcher_id: {put_farmer_request.payload.launcher_id.hex()}",
+        put_farmer_response = await self.pool.update_farmer(
+            put_farmer_request, self.post_metadata_from_request(request_obj)
         )
+
         return obj_to_response(put_farmer_response)
 
     async def post_partial(self, request_obj) -> web.Response:
