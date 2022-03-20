@@ -1,5 +1,6 @@
 import aiohttp
 import asyncio
+import dataclasses
 import json
 import itertools
 import logging
@@ -1276,42 +1277,57 @@ class Pool:
         if not AugSchemeMPL.verify(last_state.owner_pubkey, request.payload.get_hash(), request.signature):
             return error_dict(PoolErrorCode.INVALID_SIGNATURE, "Invalid signature")
 
-        farmer_dict = farmer_record.to_json_dict()
-        response_dict = {}
+        updated_record: FarmerRecord = dataclasses.replace(farmer_record)
+        response_dict: Dict[str, bool] = {}
+        is_new_pubkey = is_new_payout = False
         if request.payload.authentication_public_key is not None:
-            is_new_value = farmer_record.authentication_public_key != request.payload.authentication_public_key
-            response_dict["authentication_public_key"] = is_new_value
-            if is_new_value:
-                farmer_dict["authentication_public_key"] = request.payload.authentication_public_key
+            if is_new_pubkey := farmer_record.authentication_public_key != request.payload.authentication_public_key:
+                updated_record = dataclasses.replace(
+                    updated_record,
+                    authentication_public_key=request.payload.authentication_public_key,
+                )
 
         if request.payload.payout_instructions is not None:
-            is_new_value = (
+            if is_new_payout := (
                 farmer_record.payout_instructions != request.payload.payout_instructions
                 and request.payload.payout_instructions is not None
                 and len(hexstr_to_bytes(request.payload.payout_instructions)) == 32
+            ):
+                updated_record = dataclasses.replace(
+                    updated_record, payout_instructions=request.payload.payout_instructions,
+                )
+
+        if updated_record != farmer_record:
+            self.log.info(
+                'Updated farmer record (pubkey: %r, payout: %r) for %s',
+                is_new_pubkey,
+                is_new_payout,
+                updated_record.launcher_id.hex(),
             )
-            response_dict["payout_instructions"] = is_new_value
-            if is_new_value:
-                farmer_dict["payout_instructions"] = request.payload.payout_instructions
+            await self.store.add_farmer_record(updated_record, metadata)
 
-        if request.payload.suggested_difficulty is not None:
-            is_new_value = (
-                farmer_record.difficulty != request.payload.suggested_difficulty
-                and request.payload.suggested_difficulty is not None
-                and request.payload.suggested_difficulty >= self.min_difficulty
-            )
-            response_dict["suggested_difficulty"] = is_new_value
-            if is_new_value:
-                farmer_dict["difficulty"] = request.payload.suggested_difficulty
+        # We dont want to accept farmer suggestion
+        # As fo 1.3.1 is not even supported by the client
+        # if request.payload.suggested_difficulty is not None:
+        #     is_new_value = (
+        #         farmer_record.difficulty != request.payload.suggested_difficulty
+        #         and request.payload.suggested_difficulty is not None
+        #         and request.payload.suggested_difficulty >= self.min_difficulty
+        #     )
+        #     response_dict["suggested_difficulty"] = is_new_value
+        #     if is_new_value:
+        #         self.farmer_update_blocked.add(launcher_id)
 
-        async def update_farmer_later():
-            await asyncio.sleep(self.farmer_update_cooldown_seconds)
-            await self.store.add_farmer_record(FarmerRecord.from_json_dict(farmer_dict), metadata)
-            self.farmer_update_blocked.remove(launcher_id)
-            self.log.info(f"Updated farmer: {response_dict}")
+        #         async def update_difficulty_later(launcher_id, difficulty):
+        #             await asyncio.sleep(self.farmer_update_cooldown_seconds)
+        #             await self.store.update_difficulty(
+        #                 launcher_id, difficulty,
+        #             )
+        #             self.farmer_update_blocked.remove(launcher_id)
 
-        self.farmer_update_blocked.add(launcher_id)
-        asyncio.create_task(update_farmer_later())
+        #         asyncio.create_task(update_difficulty_later(
+        #             launcher_id, request.payload.suggested_difficulty,
+        #         ))
 
         # TODO Fix chia-blockchain's Streamable implementation to support Optional in `from_json_dict`, then use
         # PutFarmerResponse here and in the trace up.
