@@ -1,12 +1,14 @@
 import copy
 import pytest
+from decimal import Decimal as D, getcontext
 from unittest.mock import patch, AsyncMock
 
-from pool.payment import subtract_fees
+from pool.payment import subtract_fees, create_share
 from pool.util import payment_targets_to_additions
 
 DEC_XCH = 10 ** 11
 FEE_XCH = 10 ** 10
+REWARD_XCH = 1.75 * 10 ** 12
 
 
 @pytest.mark.parametrize('payment_targets,total_cost,rv_additions,rv_payment_targets,exc', [
@@ -115,3 +117,175 @@ async def test__subtract_fees(wallet_rpc_client, payment_targets, total_cost, rv
         for i, target in enumerate(targets):
             assert tx_fees[i] == payment_targets[ph][i]['tx_fee']
             assert payment_targets[ph][i]['amount'] == target['amount'] - tx_fees[i]
+
+
+@pytest.mark.parametrize('fees, farmers_points_data, referrals, total_amount, total_points, rv', [
+    # Pool fee only
+    (
+        {'stay_d': 0.0, 'stay_l': 2, 'pool': 0.01, 'size': {}, 'max': D('0.25')},
+        [
+            {'payout_instructions': '1', 'points': 100000, 'days_pooling': 2, 'estimated_size': 1},
+            {'payout_instructions': '2', 'points': 900000, 'days_pooling': 2, 'estimated_size': 1},
+        ],
+        {},
+        REWARD_XCH,
+        1000000,
+        {
+            'pool_fee_amount': int(REWARD_XCH * 0.01),
+            'referral_fee_amount': 0,
+            'additions': {
+                '1': {'amount': int(REWARD_XCH * 0.99 * 0.1)},
+                '2': {'amount': int(REWARD_XCH * 0.99 * 0.9)},
+            },
+            'amount_to_distribute': int(REWARD_XCH * 0.99),
+            'remainings': 0,
+        },
+    ),
+    # Pool fee + stay of length
+    (
+        {'stay_d': 0.1, 'stay_l': 100, 'pool': 0.01, 'size': {}, 'max': D('0.25')},
+        [
+            {'payout_instructions': '1', 'points': 100000, 'days_pooling': 0, 'estimated_size': 1},
+            {'payout_instructions': '2', 'points': 900000, 'days_pooling': 50, 'estimated_size': 1},
+            {'payout_instructions': '3', 'points': 1000000, 'days_pooling': 150, 'estimated_size': 1},
+        ],
+        {},
+        REWARD_XCH,
+        2000000,
+        {
+            'pool_fee_amount': int(
+               D(REWARD_XCH * 0.05 * 0.01) +
+               D(REWARD_XCH * 0.45 * 0.00951) +
+               D(REWARD_XCH * 0.5 * 0.009) + 1
+            ),
+            'referral_fee_amount': 0,
+            'additions': {
+                '1': {'amount': int(D(REWARD_XCH) * D('0.99') * D('0.05'))},
+                '2': {'amount': int(REWARD_XCH * (1 - 0.00951) * 0.45)},
+                '3': {'amount': int(REWARD_XCH * 0.991 * 0.5)},
+            },
+            'amount_to_distribute': int(REWARD_XCH * 0.99 * 0.05) + int(REWARD_XCH * (1 - 0.00951) * 0.45) + int(REWARD_XCH * 0.991 * 0.5),
+            'remainings': 0,
+        },
+    ),
+    # Pool fee + stay of length + size
+    (
+        {'stay_d': 0.1, 'stay_l': 100, 'pool': 0.01, 'size': {100: 0.1, 500: 0.2}, 'max': D('0.25')},
+        [
+            {'payout_instructions': '1', 'points': 100000, 'days_pooling': 0, 'estimated_size': 1},
+            {'payout_instructions': '2', 'points': 900000, 'days_pooling': 50, 'estimated_size': 150 * 1024 ** 4},
+            {'payout_instructions': '3', 'points': 1000000, 'days_pooling': 150, 'estimated_size': 800 * 1024 ** 4},
+        ],
+        {},
+        REWARD_XCH,
+        2000000,
+        {
+            'pool_fee_amount': int(
+               D(REWARD_XCH * 0.05 * 0.01) +
+               D(REWARD_XCH * 0.45 * 0.00851) +
+               D(REWARD_XCH * 0.5 * 0.0075)
+            ),
+            'referral_fee_amount': 0,
+            'additions': {
+                '1': {'amount': int(D(REWARD_XCH) * D('0.99') * D('0.05'))},
+                '2': {'amount': int(REWARD_XCH * (1 - 0.00851) * 0.45)},
+                '3': {'amount': int(REWARD_XCH * 0.9925 * 0.5)},
+            },
+            'amount_to_distribute': int(REWARD_XCH * 0.99 * 0.05) + int(REWARD_XCH * (1 - 0.00851) * 0.45) + int(REWARD_XCH * 0.9925 * 0.5),
+            'remainings': 0,
+        },
+    ),
+    # Pool fee + stay of length + size + referral
+    (
+        {'stay_d': 0.1, 'stay_l': 100, 'pool': 0.01, 'size': {100: 0.1, 500: 0.2}, 'max': D('0.25')},
+        [
+            {'payout_instructions': '1', 'points': 100000, 'days_pooling': 0, 'estimated_size': 1},
+            {'payout_instructions': '2', 'points': 900000, 'days_pooling': 50, 'estimated_size': 150 * 1024 ** 4},
+            {'payout_instructions': '3', 'points': 1000000, 'days_pooling': 150, 'estimated_size': 800 * 1024 ** 4},
+        ],
+        {
+            '3': {
+                'id': 11,
+                'target_payout_instructions': '4',
+            },
+        },
+        REWARD_XCH,
+        2000000,
+        {
+            'pool_fee_amount': int(
+               D(REWARD_XCH * 0.05 * 0.01) +
+               D(REWARD_XCH * 0.45 * 0.00851) +
+               D(REWARD_XCH * 0.5 * 0.0075 * 0.8) # 20% of fee goes to referral
+            ),
+            'referral_fee_amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2),
+            'additions': {
+                '1': {'amount': int(D(REWARD_XCH) * D('0.99') * D('0.05'))},
+                '2': {'amount': int(REWARD_XCH * (1 - 0.00851) * 0.45)},
+                '3': {'amount': int(REWARD_XCH * 0.9925 * 0.5), 'referral': 11, 'referral_amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2)},
+                '4': {'amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2)},
+            },
+            'amount_to_distribute': int(REWARD_XCH * 0.99 * 0.05) + int(REWARD_XCH * (1 - 0.00851) * 0.45) + int(REWARD_XCH * 0.9925 * 0.5) + int(REWARD_XCH * 0.0075 * 0.5 * 0.2),
+            'remainings': 0,
+        },
+    ),
+    # Pool fee + stay of length + size + 2 referrals
+    (
+        {'stay_d': 0.1, 'stay_l': 100, 'pool': 0.01, 'size': {100: 0.1, 500: 0.2}, 'max': D('0.25')},
+        [
+            {'payout_instructions': '1', 'points': 100000, 'days_pooling': 0, 'estimated_size': 1},
+            {'payout_instructions': '2', 'points': 900000, 'days_pooling': 50, 'estimated_size': 150 * 1024 ** 4},
+            {'payout_instructions': '3', 'points': 1000000, 'days_pooling': 150, 'estimated_size': 800 * 1024 ** 4},
+        ],
+        {
+            '3': {
+                'id': 11,
+                'target_payout_instructions': '4',
+            },
+            '1': {
+                'id': 12,
+                'target_payout_instructions': '2',
+            }
+        },
+        REWARD_XCH,
+        2000000,
+        {
+            'pool_fee_amount': int(
+               D(REWARD_XCH * 0.05 * 0.01 * 0.8) +
+               D(REWARD_XCH * 0.45 * 0.00851) +
+               D(REWARD_XCH * 0.5 * 0.0075 * 0.8) # 20% of fee goes to referral
+            ),
+            'referral_fee_amount': (
+                int(REWARD_XCH * 0.0075 * 0.5 * 0.2) +
+                int(REWARD_XCH * 0.01 * 0.05 * 0.2)
+            ),
+            'additions': {
+                '1': {'amount': int(REWARD_XCH * 0.99 * 0.05), 'referral': 12, 'referral_amount': int(REWARD_XCH * 0.05 * 0.01 * 0.2)},
+                '2': {'amount': int(REWARD_XCH * (1 - 0.00851) * 0.45) + int(REWARD_XCH * 0.05 * 0.01 * 0.2)},
+                '3': {'amount': int(REWARD_XCH * 0.9925 * 0.5), 'referral': 11, 'referral_amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2)},
+                '4': {'amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2)},
+            },
+            'amount_to_distribute': (
+                int(REWARD_XCH * 0.99 * 0.05) +
+                int(REWARD_XCH * (1 - 0.00851) * 0.45) +
+                int(REWARD_XCH * 0.9925 * 0.5) +
+                # referrals amounts
+                int(REWARD_XCH * 0.0075 * 0.5 * 0.2) +
+                int(REWARD_XCH * 0.01 * 0.05 * 0.2)
+            ),
+            'remainings': 0,
+        },
+    ),
+])
+async def test__create_share(fees, farmers_points_data, referrals, total_amount, total_points, rv):
+    getcontext().prec = 17
+    getcontext().clear_flags()
+    amock = AsyncMock()
+    amock.get_referrals.return_value = referrals
+    share = await create_share(
+        amock,
+        total_amount,
+        total_points,
+        farmers_points_data,
+        fees['pool'], fees['stay_d'], fees['stay_l'], fees['size'], fees['max'],
+    )
+    assert share == rv

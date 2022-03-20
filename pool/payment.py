@@ -1,3 +1,4 @@
+import logging
 import math
 
 from decimal import Decimal as D
@@ -7,7 +8,13 @@ from chia.util.ints import uint64
 from chia.wallet.transaction_record import TransactionRecord
 
 from .fee import get_cost
-from .util import payment_targets_to_additions
+from .util import (
+    payment_targets_to_additions,
+    size_discount,
+    stay_fee_discount,
+)
+
+logger = logging.getLogger('payment')
 
 
 async def subtract_fees(
@@ -53,3 +60,88 @@ async def subtract_fees(
     blockchain_fee = uint64(cost_per_target * len(payment_targets))
 
     return additions, blockchain_fee
+
+
+async def create_share(
+    store,
+    total_amount: int,
+    total_points: int,
+    farmer_points_data: List,
+    pool_fee: float,
+    stay_fee_discount_v: float,
+    stay_fee_length: int,
+    size_fee_discount: float,
+    max_fee_discount: D,
+):
+
+    additions: Dict = {}
+    share = {
+        'pool_fee_amount': 0,
+        'referral_fee_amount': 0,
+        'additions': additions,
+        'amount_to_distribute': 0,
+    }
+
+    if not farmer_points_data or total_points <= 0:
+        return
+
+    mojo_per_point = D(total_amount) / D(total_points)
+    logger.info(f"Paying out {mojo_per_point} mojo / point")
+
+    referrals = await store.get_referrals()
+
+    for i in farmer_points_data:
+        points = i['points']
+        ph = i['payout_instructions']
+
+        if points <= 0:
+            continue
+
+        if ph not in additions:
+            additions[ph] = {'amount': 0}
+
+        farmer_stay_fee: D = stay_fee_discount(
+            stay_fee_discount_v, stay_fee_length, i['days_pooling'],
+        )
+        size_fee: D = D('0')
+        if size_fee_discount:
+            size_fee = size_discount(
+                i['estimated_size'], size_fee_discount,
+            )
+
+        mojos = points * mojo_per_point
+        fee_discount = min(farmer_stay_fee + size_fee, max_fee_discount)
+        pool_fee_pct = D(pool_fee) * (1 - fee_discount)
+
+        # Just be extra sure pool is getting enough fee
+        assert pool_fee_pct > pool_fee / 2
+
+        addition = mojos * (1 - pool_fee_pct)
+        pool_fee_mojos = mojos - addition
+
+        additions[ph]['amount'] += int(addition)
+
+        if ph in referrals:
+            # Divide between pool fee and referral fee
+            referral_fee = pool_fee_mojos * D(0.2)  # 20% fixed for now
+            share['pool_fee_amount'] += pool_fee_mojos - referral_fee
+
+            referral_fee = math.floor(referral_fee)
+            share['referral_fee_amount'] += referral_fee
+
+            referral = referrals[ph]
+            target_ph = referral['target_payout_instructions']
+            if target_ph not in additions:
+                additions[target_ph] = {'amount': 0}
+
+            additions[target_ph]['amount'] += referral_fee
+
+            additions[ph]['referral'] = referral['id']
+            additions[ph]['referral_amount'] = referral_fee
+        else:
+            share['pool_fee_amount'] += pool_fee_mojos
+
+    share['pool_fee_amount'] = math.floor(share['pool_fee_amount'])
+    share['amount_to_distribute'] = sum(map(lambda x: x['amount'], additions.values()))
+    share['remainings'] = int(total_amount - share['amount_to_distribute'] - share['pool_fee_amount'])
+    return share

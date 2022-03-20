@@ -11,7 +11,6 @@ import time
 from asyncio import Task
 from collections import defaultdict
 from decimal import Decimal as D
-from math import floor
 from typing import Dict, Optional, Set, List, Tuple
 
 from blspy import AugSchemeMPL, G1Element
@@ -57,7 +56,7 @@ from .fee import get_cost
 from .launchers import LaunchersSingleton
 from .notifications import Notifications
 from .partials import Partials
-from .payment import subtract_fees
+from .payment import subtract_fees, create_share
 from .singleton import (
     create_absorb_transaction,
     get_singleton_state,
@@ -74,8 +73,6 @@ from .util import (
     create_transaction,
     error_dict,
     payment_targets_to_additions,
-    size_discount,
-    stay_fee_discount,
 )
 from .xchprice import XCHPrice
 
@@ -747,86 +744,45 @@ class Pool:
                         points_data: List[dict] = await self.store.get_farmer_points_data()
                         total_points = sum([pd['points'] for pd in points_data])
 
-                    total_referral_fees = 0
-                    pool_fee_amount = 0
-                    if points_data and total_points > 0:
-                        mojo_per_point = D(total_amount_claimed) / D(total_points)
-                        self.log.info(f"Paying out {mojo_per_point} mojo / point")
+                    share = await create_share(
+                        self.store,
+                        total_amount_claimed,
+                        total_points,
+                        points_data,
+                        self.pool_fee,
+                        self.stay_fee_discount,
+                        self.stay_fee_length,
+                        self.size_fee_discount,
+                        self.max_fee_discount,
+                    )
 
-                        referrals = await self.store.get_referrals()
+                    if share:
 
-                        additions: Dict = {}
-                        for i in points_data:
-                            points = i['points']
-                            ph = i['payout_instructions']
-
-                            if points <= 0:
-                                continue
-
-                            if ph not in additions:
-                                additions[ph] = {'amount': 0}
-
-                            stay_fee: D = stay_fee_discount(
-                                self.stay_fee_discount, self.stay_fee_length, i['days_pooling'],
-                            )
-                            size_fee: D = D('0')
-                            if self.size_fee_discount:
-                                size_fee = size_discount(
-                                    i['estimated_size'], self.size_fee_discount,
-                                )
-
-                            mojos = points * mojo_per_point
-                            fee_discount = min(stay_fee + size_fee, self.max_fee_discount)
-                            pool_fee_pct = D(self.pool_fee) * (1 - fee_discount)
-
-                            # Just be extra sure pool is getting enough fee
-                            assert pool_fee_pct > self.pool_fee / 2
-
-                            pool_fee = mojos * pool_fee_pct
-                            mojos = floor(mojos - pool_fee)
-
-                            additions[ph]['amount'] += mojos
-
-                            if ph in referrals:
-                                # Divide between pool fee and referral fee
-                                referral_fee = pool_fee * D(0.2)  # 20% fixed for now
-                                pool_fee_amount += pool_fee - referral_fee
-
-                                referral_fee = floor(referral_fee)
-                                total_referral_fees += referral_fee
-
-                                referral = referrals[ph]
-                                target_ph = referral['target_payout_instructions']
-                                if target_ph not in additions:
-                                    additions[target_ph] = {'amount': 0}
-
-                                additions[target_ph]['amount'] += referral_fee
-
-                                additions[ph]['referral'] = referral['id']
-                                additions[ph]['referral_amount'] = referral_fee
-                            else:
-                                pool_fee_amount += pool_fee
-
-                        pool_fee_amount = floor(pool_fee_amount)
-                        amount_to_distribute = sum(map(lambda x: x['amount'], additions.values()))
-                        remainings = total_amount_claimed - amount_to_distribute - pool_fee_amount
-
-                        if pool_fee_amount < 0:
+                        if share['pool_fee_amount'] < 0:
                             raise RuntimeError(
-                                f'Pool fee amount is negative: {pool_fee_amount  / (10 ** 12)}'
+                                f'Pool fee amount is negative: {share["pool_fee_amount"]  / (10 ** 12)}'
                             )
 
-                        if total_referral_fees < 0:
+                        if share['referral_fee_amount'] < 0:
                             raise RuntimeError(
-                                f'Referral amount is negative: {total_referral_fees  / (10 ** 12)}'
+                                f'Referral amount is negative: {share["referral_fee_amount"]  / (10 ** 12)}'
                             )
 
-                        self.log.info(f"Pool fee amount {pool_fee_amount  / (10 ** 12)}")
-                        self.log.info(f"Referral fee amount {total_referral_fees  / (10 ** 12)}")
-                        self.log.info(f"Total amount to distribute: {amount_to_distribute  / (10 ** 12)}")
-                        self.log.info(f"Remainings: {remainings  / (10 ** 12)}")
+                        self.log.info(
+                            'Pool fee amount %r', share['pool_fee_amount'] / (10 ** 12),
+                        )
+                        self.log.info(
+                            'Referral fee amount %r', share['referral_fee_amount'] / (10 ** 12),
+                        )
+                        self.log.info(
+                            'Total amount to distribute %r',
+                            share['amount_to_distribute'] / (10 ** 12),
+                        )
+                        self.log.info(
+                            'Remainings: %r', share['remainings'] / (10 ** 12),
+                        )
                         # If more than 0.00001 was left behind there is something off
-                        if remainings > 10 ** 7:
+                        if share['remainings'] > 10 ** 7:
                             self.log.error('Remainings too high, aborting.')
                             await asyncio.sleep(60)
                             continue
@@ -836,9 +792,9 @@ class Pool:
                             wallet['puzzle_hash'],
                             self.pool_fee_puzzle_hash,
                             total_amount_claimed,
-                            pool_fee_amount,
-                            total_referral_fees,
-                            [dict(v, puzzle_hash=k) for k, v in additions.items()],
+                            share['pool_fee_amount'],
+                            share['referral_fee_amount'],
+                            [dict(v, puzzle_hash=k) for k, v in share['additions'].items()],
                         )
 
                         # Subtract the points from each farmer
