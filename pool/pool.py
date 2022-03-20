@@ -890,7 +890,8 @@ class Pool:
                             launcher_min_payment=enable_launcher_min_payment,
                             limit=self.max_additions_per_transaction,
                         )
-                        if self.payment_fee == PaymentFee.AUTO:
+
+                        if additions and self.payment_fee == PaymentFee.AUTO:
                             payment_fee = self.blockchain_mempool_full_pct > 10
                             self.log.info('Payment fee is AUTO. Fees? %r', payment_fee)
                         else:
@@ -936,7 +937,7 @@ class Pool:
 
                         if not additions:
                             self.log.info('No payments above minimum, skipping.')
-                            await asyncio.sleep(30)
+                            await asyncio.sleep(60)
                             continue
 
                         transaction: TransactionRecord = await create_transaction(
