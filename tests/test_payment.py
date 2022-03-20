@@ -1,6 +1,6 @@
 import copy
 import pytest
-from decimal import Decimal as D, getcontext
+from decimal import Decimal as D, localcontext
 from unittest.mock import patch, AsyncMock
 
 from pool.payment import subtract_fees, create_share
@@ -277,15 +277,16 @@ async def test__subtract_fees(wallet_rpc_client, payment_targets, total_cost, rv
     ),
 ])
 async def test__create_share(fees, farmers_points_data, referrals, total_amount, total_points, rv):
-    getcontext().prec = 17
-    getcontext().clear_flags()
-    amock = AsyncMock()
-    amock.get_referrals.return_value = referrals
-    share = await create_share(
-        amock,
-        total_amount,
-        total_points,
-        farmers_points_data,
-        fees['pool'], fees['stay_d'], fees['stay_l'], fees['size'], fees['max'],
-    )
-    assert share == rv
+    with localcontext() as ctx:
+        ctx.prec = 17
+        ctx.clear_flags()
+        amock = AsyncMock()
+        amock.get_referrals.return_value = referrals
+        share = await create_share(
+            amock,
+            total_amount,
+            total_points,
+            farmers_points_data,
+            fees['pool'], fees['stay_d'], fees['stay_l'], fees['size'], fees['max'],
+        )
+        assert share == rv
