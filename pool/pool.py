@@ -23,7 +23,6 @@ from chia.protocols.pool_protocol import (
     PostFarmerRequest,
     PostFarmerResponse,
     PutFarmerRequest,
-    PutFarmerResponse,
     POOL_PROTOCOL_VERSION,
 )
 from chia.rpc.wallet_rpc_client import WalletRpcClient
@@ -683,16 +682,16 @@ class Pool:
                         continue
 
                     real_coin = c
-                    #if not await self.store.block_exists(c.coin.parent_coin_info.hex()):
-                    #    # Check if its a double spend to absorb with a fee
-                    #    parent_coin_record: Optional[CoinRecord] = (
-                    #        await self.node_rpc_client.get_coin_record_by_name(
-                    #            c.coin.parent_coin_info,
-                    #        )
-                    #    )
-                    #    # The parent coin would have same puzzle hash of the wallet
-                    #    if parent_coin_record and parent_coin_record.spent and parent_coin_record.coin.puzzle_hash == wallet['puzzle_hash']:
-                    #        c = parent_coin_record
+                    # if not await self.store.block_exists(c.coin.parent_coin_info.hex()):
+                    #     # Check if its a double spend to absorb with a fee
+                    #     parent_coin_record: Optional[CoinRecord] = (
+                    #         await self.node_rpc_client.get_coin_record_by_name(
+                    #             c.coin.parent_coin_info,
+                    #         )
+                    #     )
+                    #     # The parent coin would have same puzzle hash of the wallet
+                    #     if parent_coin_record and parent_coin_record.spent and parent_coin_record.coin.puzzle_hash == wallet['puzzle_hash']:
+                    #         c = parent_coin_record
 
                     if not await self.store.block_exists(c.coin.parent_coin_info.hex()):
 
@@ -1189,8 +1188,8 @@ class Pool:
                 return error_dict(PoolErrorCode.INVALID_SINGLETON, "Singleton is not assigned to this pool")
 
             if (
-                request.payload.suggested_difficulty is None
-                or request.payload.suggested_difficulty < self.min_difficulty
+                request.payload.suggested_difficulty is None or
+                request.payload.suggested_difficulty < self.min_difficulty
             ):
                 difficulty: uint64 = self.default_difficulty
             else:
@@ -1290,9 +1289,9 @@ class Pool:
 
         if request.payload.payout_instructions is not None:
             if is_new_payout := (
-                farmer_record.payout_instructions != request.payload.payout_instructions
-                and request.payload.payout_instructions is not None
-                and len(hexstr_to_bytes(request.payload.payout_instructions)) == 32
+                farmer_record.payout_instructions != request.payload.payout_instructions and
+                request.payload.payout_instructions is not None and
+                len(hexstr_to_bytes(request.payload.payout_instructions)) == 32
             ):
                 updated_record = dataclasses.replace(
                     updated_record, payout_instructions=request.payload.payout_instructions,
@@ -1404,9 +1403,9 @@ class Pool:
             await self.partials.remove_launcher(launcher_id)
 
         if farmer_rec is not None and (
-            farmer_rec.singleton_tip != buried_singleton_tip
-            or farmer_rec.singleton_tip_state != buried_singleton_tip_state
-            or await self.store.singleton_exists(launcher_id) is None
+            farmer_rec.singleton_tip != buried_singleton_tip or
+            farmer_rec.singleton_tip_state != buried_singleton_tip_state or
+            await self.store.singleton_exists(launcher_id) is None
         ):
             # This means the singleton has been changed in the blockchain (either by us or someone else). We
             # still keep track of this singleton if the farmer has changed to a different pool, in case they
