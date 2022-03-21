@@ -116,7 +116,7 @@ class PgsqlPoolStore(object):
         async with self.pool.acquire() as conn:
             async with conn.cursor() as cursor:
                 await cursor.execute(
-                    'SELECT launcher_id, is_pool_member, left_last_at, left_at FROM farmer'
+                    'SELECT is_pool_member, left_last_at, left_at FROM farmer'
                     ' WHERE launcher_id = %s',
                     (farmer_record.launcher_id.hex(),)
                 )
@@ -155,7 +155,7 @@ class PgsqlPoolStore(object):
 
                     join_left = ''
                     for field, value in left_join_cooldown(
-                        exists[2], exists[3], farmer_record.is_pool_member, exists[1],
+                        exists[1], exists[2], farmer_record.is_pool_member, exists[0],
                         COOLDOWN_LEFT_JOIN_HOURS,
                     ):
                         join_left += f', {field} = %s'
