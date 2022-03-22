@@ -4,7 +4,6 @@ import itertools
 import logging
 import time
 
-from chia.cmds.farm_funcs import get_average_block_time
 from chia.protocols.pool_protocol import PostPartialPayload
 from chia.types.blockchain_format.sized_bytes import bytes32
 from chia.util.ints import uint64
@@ -261,7 +260,7 @@ class Partials(object):
         pool_size = self.calculate_estimated_size(self.cache.all.points)
         blockchain_space = self.pool.blockchain_state['space']
         proportion = pool_size / blockchain_space if blockchain_space else -1
-        etw = int(await get_average_block_time(None) / proportion) if proportion else -1
+        etw = int(await self.pool.get_average_block_time() / proportion) if proportion else -1
         return pool_size, etw
 
     async def remove_old_partials_loop(self):

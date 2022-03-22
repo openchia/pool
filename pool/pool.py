@@ -223,10 +223,6 @@ class Pool:
         # faster.
         self.max_additions_per_transaction = pool_config["max_additions_per_transaction"]
 
-        # Keeps track of the latest state of our node
-        self.blockchain_state: Dict = {"peak": None}
-        self.blockchain_mempool_full_pct: int = 0
-
         # We target these many partials for this number of seconds. We adjust after receiving this many partials.
         self.number_of_partials_target: int = pool_config["number_of_partials_target"]
         self.time_target: int = pool_config["time_target"]
@@ -242,17 +238,58 @@ class Pool:
         self.xchprice_loop_task: Optional[asyncio.Task] = None
 
         self.node_rpc_client: Optional[FullNodeRpcClient] = None
-        self.node_hostname = pool_config.get("node_hostname") or self.config["self_hostname"]
-        self.node_rpc_port = pool_config["node_rpc_port"]
+        self.nodes: List[Dict] = []
+        for node in pool_config['nodes']:
+            self.nodes.append({
+                'hostname': node['hostname'],
+                'rpc_port': node.get('rpc_port') or 8555,
+                'ssl_dir': node.get('ssl_dir'),
+                'rpc_client': None,
+                # Keeps track of the latest state of our node
+                'blockchain_state': {'peak': None},
+                'blockchain_mempool_full_pct': 0,
+
+            })
+
+        # Keeps track of the latest state of our node
+        self.blockchain_state: Dict = {"peak": None}
+        self.blockchain_mempool_full_pct: int = 0
 
     async def start(self):
         await self.store.connect()
         await self.store_ts.connect()
         await self.partials.load_from_store()
 
-        self.node_rpc_client = await FullNodeRpcClient.create(
-            self.node_hostname, uint16(self.node_rpc_port), DEFAULT_ROOT_PATH, self.config
-        )
+        for node in self.nodes:
+            args = [node['hostname'], uint16(node['rpc_port'])]
+            if node['ssl_dir']:
+                args += [
+                    pathlib.Path(node['ssl_dir']),
+                    {
+                        'private_ssl_ca': {
+                            'crt': 'ca/private_ca.crt',
+                            'key': 'ca/private_ca.key',
+                        },
+                        'daemon_ssl': {
+                            'private_crt': 'daemon/private_daemon.crt',
+                            'private_key': 'daemon/private_daemon.key',
+                        },
+                    },
+                ]
+            else:
+                args += [DEFAULT_ROOT_PATH, self.config]
+
+            try:
+                node['rpc_client'] = await FullNodeRpcClient.create(
+                    node['hostname'], uint16(node['rpc_port']), DEFAULT_ROOT_PATH, self.config
+                )
+            except Exception:
+                self.log.error('Failed to connect to %s', node['hostname'], exc_info=True)
+            else:
+                working_node = True
+
+        if not working_node:
+            raise RuntimeError('Unable to create node client, exiting.')
 
         for wallet in self.wallets:
             if wallet['ssl_dir']:
@@ -280,14 +317,22 @@ class Pool:
             except Exception:
                 wallet['synced'] = False
 
-        while True:
-            try:
-                self.blockchain_state = await self.node_rpc_client.get_blockchain_state()
-            except aiohttp.client_exceptions.ClientConnectorError:
-                self.log.error('Failing to connect to node, retrying in 2 seconds')
+        working_node = None
+        while not working_node:
+            for node in self.nodes:
+                try:
+                    node['blockchain_state'] = await node['rpc_client'].get_blockchain_state()
+                except aiohttp.client_exceptions.ClientConnectorError:
+                    self.log.error(
+                        'Failing to connect to node %r, retrying in 2 seconds', node['hostname'],
+                    )
+                else:
+                    if not working_node:
+                        working_node = node
+            if not working_node:
                 await asyncio.sleep(2)
-            else:
-                break
+        self.node_rpc_client = node['rpc_client']
+        self.blockchain_state = node['blockchain_state']
 
         try:
             for wallet in self.wallets:
@@ -350,8 +395,11 @@ class Pool:
         for wallet in self.wallets:
             wallet['rpc_client'].close()
             await wallet['rpc_client'].await_closed()
-        self.node_rpc_client.close()
-        await self.node_rpc_client.await_closed()
+
+        for node in self.nodes:
+            if node['rpc_client']:
+                node['rpc_client'].close()
+                await node['rpc_client'].await_closed()
 
         await self.store.close()
 
@@ -407,6 +455,25 @@ class Pool:
         if proc.returncode != 0:
             logger.warning('Hook %r returned %d: %r', hook, proc.returncode, stdout)
 
+    def set_healthy_node(self):
+        higher_peak = None
+        cur_node = None
+        for node in self.nodes:
+            if not (node['blockchain_state'].get('sync') or {}).get('synced'):
+                continue
+            if higher_peak is None:
+                higher_peak = node['blockchain_state']['peak'].height
+                cur_node = node
+            elif node['blockchain_state']['peak'].height > higher_peak:
+                higher_peak = node['blockchain_state']['peak'].height
+                cur_node = node
+        if cur_node is None:
+            raise RuntimeError('No healthy node available')
+
+        self.node_rpc_client = cur_node['rpc_client']
+        self.blockchain_state = cur_node['blockchain_state']
+        self.blockchain_mempool_full_pct = cur_node['blockchain_mempool_full_pct']
+
     @task_exception
     async def get_peak_loop(self):
         """
@@ -414,7 +481,29 @@ class Pool:
         """
         while True:
             try:
-                self.blockchain_state = await self.node_rpc_client.get_blockchain_state()
+                working_node = False
+                for node in self.nodes:
+                    try:
+                        node['blockchain_state'] = await node['rpc_client'].get_blockchain_state()
+                        node['blockchain_mempool_full_pct'] = int((
+                            node['blockchain_state']['mempool_cost'] /
+                            node['blockchain_state']['mempool_max_total_cost']
+                        ) * 100)
+                    except Exception:
+                        self.log.warning(
+                            'Failed to get blockchain state for node %r',
+                            node['hostname'],
+                            exc_info=True,
+                        )
+                    else:
+                        working_node = True
+
+                if not working_node:
+                    self.log.error('Unable to get blockchain state from any node.')
+                    await asyncio.sleep(30)
+                    continue
+
+                self.set_healthy_node()
 
                 if not self.scan_move_collect_pending and not self.scan_move_payment_pending and self.blockchain_state['peak'].height > self.scan_current_height:
                     new_scan_height = self.blockchain_state['peak'].height - 500
@@ -446,11 +535,6 @@ class Pool:
                 asyncio.create_task(
                     self.store_ts.add_netspace(int(self.blockchain_state['space']))
                 )
-
-                self.blockchain_mempool_full_pct = int((
-                    self.blockchain_state['mempool_cost'] /
-                    self.blockchain_state['mempool_max_total_cost']
-                ) * 100)
 
                 await asyncio.sleep(30)
             except asyncio.CancelledError:
@@ -958,13 +1042,14 @@ class Pool:
                         self.log.info(f"Transaction: {transaction}")
                         await self.store.add_transaction(transaction, payment_targets)
 
+                    peak_height = await wallet['rpc_client'].get_height_info()
                     while (
                         not transaction.confirmed or not (
                             peak_height - transaction.confirmed_at_height
                         ) > self.confirmation_security_threshold
                     ):
                         transaction = await wallet['rpc_client'].get_transaction(wallet['id'], transaction.name)
-                        peak_height = self.blockchain_state["peak"].height
+                        peak_height = await wallet['rpc_client'].get_height_info()
                         self.log.info(
                             f"Waiting for transaction to obtain {self.confirmation_security_threshold} confirmations"
                         )
