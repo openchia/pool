@@ -7,6 +7,7 @@ import os
 import signal
 import time
 import traceback
+import uvloop
 from typing import Dict, Callable, Optional
 
 import aiohttp
@@ -359,6 +360,8 @@ def main():
             },
         }
     })
+
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
     try:
         asyncio.run(start_pool_server(pool_config_path=args.config))
