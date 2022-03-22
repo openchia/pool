@@ -322,9 +322,11 @@ class Pool:
             for node in self.nodes:
                 try:
                     node['blockchain_state'] = await node['rpc_client'].get_blockchain_state()
-                except aiohttp.client_exceptions.ClientConnectorError:
+                except aiohttp.client_exceptions.ClientConnectorError as e:
                     self.log.error(
-                        'Failing to connect to node %r, retrying in 2 seconds', node['hostname'],
+                        'Failing to connect to node %r, retrying in 2 seconds: %s',
+                        node['hostname'],
+                        e,
                     )
                 else:
                     if not working_node:
