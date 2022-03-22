@@ -451,7 +451,7 @@ class Pool:
         higher_peak = None
         cur_node = None
         for node in self.nodes:
-            if not (node['blockchain_state'].get('sync') or {}).get('synced'):
+            if not node['blockchain_state']['sync']['synced']:
                 continue
             if higher_peak is None:
                 higher_peak = node['blockchain_state']['peak'].height
