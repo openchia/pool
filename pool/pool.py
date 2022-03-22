@@ -52,7 +52,6 @@ from chia.pools.pool_puzzles import (
 
 from .absorb_spend import NoCoinForFee
 from .difficulty_adjustment import get_new_difficulty
-from .exceptions import NoHealthyNode
 from .fee import get_cost
 from .launchers import LaunchersSingleton
 from .notifications import Notifications
@@ -224,6 +223,10 @@ class Pool:
         # faster.
         self.max_additions_per_transaction = pool_config["max_additions_per_transaction"]
 
+        # Keeps track of the latest state of our node
+        self.blockchain_state: Dict = {"peak": None}
+        self.blockchain_mempool_full_pct: int = 0
+
         # We target these many partials for this number of seconds. We adjust after receiving this many partials.
         self.number_of_partials_target: int = pool_config["number_of_partials_target"]
         self.time_target: int = pool_config["time_target"]
@@ -238,54 +241,18 @@ class Pool:
         self.get_peak_loop_task: Optional[asyncio.Task] = None
         self.xchprice_loop_task: Optional[asyncio.Task] = None
 
-        self.nodes: List[Dict] = []
-        for node in pool_config['nodes']:
-            self.nodes.append({
-                'hostname': node['hostname'],
-                'rpc_port': node.get('rpc_port') or 8555,
-                'ssl_dir': node.get('ssl_dir'),
-                'rpc_client': None,
-                # Keeps track of the latest state of our node
-                'blockchain_state': {'peak': None},
-                'blockchain_mempool_full_pct': 0,
-
-            })
+        self.node_rpc_client: Optional[FullNodeRpcClient] = None
+        self.node_hostname = pool_config.get("node_hostname") or self.config["self_hostname"]
+        self.node_rpc_port = pool_config["node_rpc_port"]
 
     async def start(self):
         await self.store.connect()
         await self.store_ts.connect()
         await self.partials.load_from_store()
 
-        for node in self.nodes:
-            args = [node['hostname'], uint16(node['rpc_port'])]
-            if node['ssl_dir']:
-                args += [
-                    pathlib.Path(node['ssl_dir']),
-                    {
-                        'private_ssl_ca': {
-                            'crt': 'ca/private_ca.crt',
-                            'key': 'ca/private_ca.key',
-                        },
-                        'daemon_ssl': {
-                            'private_crt': 'daemon/private_daemon.crt',
-                            'private_key': 'daemon/private_daemon.key',
-                        },
-                    },
-                ]
-            else:
-                args += [DEFAULT_ROOT_PATH, self.config]
-
-            try:
-                node['rpc_client'] = await FullNodeRpcClient.create(
-                    node['hostname'], uint16(node['rpc_port']), DEFAULT_ROOT_PATH, self.config
-                )
-            except Exception:
-                self.log.error('Failed to connect to %s', node['hostname'], exc_info=True)
-            else:
-                working_node = True
-
-        if not working_node:
-            raise RuntimeError('Unable to create node client, exiting.')
+        self.node_rpc_client = await FullNodeRpcClient.create(
+            self.node_hostname, uint16(self.node_rpc_port), DEFAULT_ROOT_PATH, self.config
+        )
 
         for wallet in self.wallets:
             if wallet['ssl_dir']:
@@ -313,19 +280,14 @@ class Pool:
             except Exception:
                 wallet['synced'] = False
 
-        working_node = False
-        while not working_node:
-            for node in self.nodes:
-                try:
-                    node['blockchain_state'] = await node['rpc_client'].get_blockchain_state()
-                except aiohttp.client_exceptions.ClientConnectorError:
-                    self.log.error(
-                        'Failing to connect to node %r, retrying in 2 seconds', node['hostname'],
-                    )
-                else:
-                    working_node = True
-            if not working_node:
+        while True:
+            try:
+                self.blockchain_state = await self.node_rpc_client.get_blockchain_state()
+            except aiohttp.client_exceptions.ClientConnectorError:
+                self.log.error('Failing to connect to node, retrying in 2 seconds')
                 await asyncio.sleep(2)
+            else:
+                break
 
         try:
             for wallet in self.wallets:
@@ -388,10 +350,8 @@ class Pool:
         for wallet in self.wallets:
             wallet['rpc_client'].close()
             await wallet['rpc_client'].await_closed()
-        for node in self.nodes:
-            if node['rpc_client']:
-                node['rpc_client'].close()
-                await node['rpc_client'].await_closed()
+        self.node_rpc_client.close()
+        await self.node_rpc_client.await_closed()
 
         await self.store.close()
 
@@ -447,22 +407,6 @@ class Pool:
         if proc.returncode != 0:
             logger.warning('Hook %r returned %d: %r', hook, proc.returncode, stdout)
 
-    def get_healthy_node(self):
-        higher_peak = None
-        cur_node = None
-        for node in self.nodes:
-            if not node['blockchain_state']['sync']['synced']:
-                continue
-            if higher_peak is None:
-                higher_peak = node['blockchain_state']['peak'].height
-                cur_node = node
-            elif node['blockchain_state']['peak'].height > higher_peak:
-                higher_peak = node['blockchain_state']['peak'].height
-                cur_node = node
-        if cur_node is None:
-            raise NoHealthyNode('No healthy node available')
-        return cur_node
-
     @task_exception
     async def get_peak_loop(self):
         """
@@ -470,35 +414,10 @@ class Pool:
         """
         while True:
             try:
-                working_node = False
-                for node in self.nodes:
-                    try:
-                        node['blockchain_state'] = await node['rpc_client'].get_blockchain_state()
-                        node['blockchain_mempool_full_pct'] = int((
-                            node['blockchain_state']['mempool_cost'] /
-                            node['blockchain_state']['mempool_max_total_cost']
-                        ) * 100)
-                    except Exception:
-                        self.log.warning(
-                            'Failed to get blockchain state for node %r',
-                            node['hostname'],
-                            exc_info=True,
-                        )
-                    else:
-                        working_node = True
+                self.blockchain_state = await self.node_rpc_client.get_blockchain_state()
 
-                if not working_node:
-                    self.log.error('Unable to get blockchain state from any node.')
-                    await asyncio.sleep(30)
-
-                healthy_node = self.get_healthy_node()
-                blockchain_state = healthy_node['blockchain_state']
-
-                if (
-                    not self.scan_move_collect_pending and not self.scan_move_payment_pending and
-                    blockchain_state['peak'].height > self.scan_current_height
-                ):
-                    new_scan_height = blockchain_state['peak'].height - 500
+                if not self.scan_move_collect_pending and not self.scan_move_payment_pending and self.blockchain_state['peak'].height > self.scan_current_height:
+                    new_scan_height = self.blockchain_state['peak'].height - 500
                     if new_scan_height > self.scan_current_height:
                         self.scan_current_height = uint32(new_scan_height)
 
@@ -515,9 +434,9 @@ class Pool:
                         )
 
                 asyncio.create_task(self.store.set_globalinfo({
-                    'blockchain_height': blockchain_state['peak'].height,
-                    'blockchain_space': blockchain_state['space'],
-                    'blockchain_avg_block_time': await self.get_average_block_time(healthy_node),
+                    'blockchain_height': self.blockchain_state['peak'].height,
+                    'blockchain_space': self.blockchain_state['space'],
+                    'blockchain_avg_block_time': await self.get_average_block_time(),
                     'wallets': json.dumps([
                         {'address': i['address'], 'balance': i['balance'], 'synced': i['synced']}
                         for i in self.wallets
@@ -525,8 +444,13 @@ class Pool:
                 }))
 
                 asyncio.create_task(
-                    self.store_ts.add_netspace(int(blockchain_state['space']))
+                    self.store_ts.add_netspace(int(self.blockchain_state['space']))
                 )
+
+                self.blockchain_mempool_full_pct = int((
+                    self.blockchain_state['mempool_cost'] /
+                    self.blockchain_state['mempool_max_total_cost']
+                ) * 100)
 
                 await asyncio.sleep(30)
             except asyncio.CancelledError:
@@ -536,21 +460,21 @@ class Pool:
                 self.log.error(f"Unexpected error in get_peak_loop: {e}", exc_info=True)
                 await asyncio.sleep(5)
 
-    async def get_average_block_time(self, node):
+    async def get_average_block_time(self):
         blocks_to_compare = 500
-        curr = node['blockchain_state']['peak']
+        curr = self.blockchain_state["peak"]
         if curr is None or curr.height < (blocks_to_compare + 100):
             return SECONDS_PER_BLOCK
         while curr is not None and curr.height > 0 and not curr.is_transaction_block:
-            curr = await node['rpc_client'].get_block_record(curr.prev_hash)
+            curr = await self.node_rpc_client.get_block_record(curr.prev_hash)
         if curr is None:
             return SECONDS_PER_BLOCK
 
-        past_curr = await node['rpc_client'].get_block_record_by_height(
+        past_curr = await self.node_rpc_client.get_block_record_by_height(
             curr.height - blocks_to_compare
         )
         while past_curr is not None and past_curr.height > 0 and not past_curr.is_transaction_block:
-            past_curr = await node['rpc_client'].get_block_record(past_curr.prev_hash)
+            past_curr = await self.node_rpc_client.get_block_record(past_curr.prev_hash)
         if past_curr is None:
             return SECONDS_PER_BLOCK
 
@@ -565,14 +489,15 @@ class Pool:
 
         while True:
             try:
-                node = self.get_healthy_node()
-                blockchain_state = node['blockchain_state']
+                if not self.blockchain_state["sync"]["synced"]:
+                    await asyncio.sleep(60)
+                    continue
 
                 scan_phs: List[bytes32] = list(self.scan_p2_singleton_puzzle_hashes)
-                peak_height = blockchain_state["peak"].height
+                peak_height = self.blockchain_state["peak"].height
 
                 # Only get puzzle hashes with a certain number of confirmations or more, to avoid reorg issues
-                coin_records: List[CoinRecord] = await node['rpc_client'].get_coin_records_by_puzzle_hashes(
+                coin_records: List[CoinRecord] = await self.node_rpc_client.get_coin_records_by_puzzle_hashes(
                     scan_phs,
                     include_spent_coins=False,
                     start_height=self.scan_current_height,
@@ -634,13 +559,11 @@ class Pool:
 
                     singleton_coin_record: Optional[
                         CoinRecord
-                    ] = await node['rpc_client'].get_coin_record_by_name(singleton_tip.name())
+                    ] = await self.node_rpc_client.get_coin_record_by_name(singleton_tip.name())
                     if singleton_coin_record is None:
                         continue
                     if singleton_coin_record.spent:
-                        asyncio.create_task(self.get_and_validate_singleton_state(
-                            node, rec.launcher_id
-                        ))
+                        asyncio.create_task(self.get_and_validate_singleton_state(rec.launcher_id))
                         self.log.warning(
                             f"Singleton coin {singleton_coin_record.coin.name()} is spent, will not "
                             f"claim rewards"
@@ -660,14 +583,14 @@ class Pool:
 
                     try:
                         spend_bundle = await create_absorb_transaction(
-                            node['rpc_client'],
+                            self.node_rpc_client,
                             self.wallets,
                             rec,
-                            blockchain_state['peak'].height,
+                            self.blockchain_state["peak"].height,
                             coins_to_absorb,
                             self.absorb_fee,
                             self.absorb_fee_absolute,
-                            node['blockchain_mempool_full_pct'],
+                            self.blockchain_mempool_full_pct,
                             self.mojos_per_cost,
                             self.constants,
                         )
@@ -678,14 +601,14 @@ class Pool:
                             e,
                         )
                         spend_bundle = await create_absorb_transaction(
-                            node['rpc_client'],
+                            self.node_rpc_client,
                             self.wallets,
                             rec,
-                            blockchain_state['peak'].height,
+                            self.blockchain_state["peak"].height,
                             coins_to_absorb,
                             False,
                             0,
-                            node['blockchain_mempool_full_pct'],
+                            self.blockchain_mempool_full_pct,
                             self.mojos_per_cost,
                             self.constants,
                         )
@@ -693,16 +616,13 @@ class Pool:
                     if spend_bundle is None:
                         continue
 
-                    push_tx_response: Dict = await node['rpc_client'].push_tx(spend_bundle)
+                    push_tx_response: Dict = await self.node_rpc_client.push_tx(spend_bundle)
                     if push_tx_response["status"] == "SUCCESS":
                         self.log.info(f"Submitted transaction successfully: {spend_bundle.name().hex()}")
                     else:
                         self.log.error(f"Error submitting transaction: {push_tx_response}")
 
                 await asyncio.sleep(self.collect_pool_rewards_interval)
-            except NoHealthyNode:
-                self.log.error('No healthy node, skipping collecting rewards loop')
-                await asyncio.sleep(60)
             except asyncio.CancelledError:
                 self.log.info("Cancelled collect_pool_rewards_loop, closing")
                 return
@@ -718,18 +638,20 @@ class Pool:
         """
         while True:
             try:
-                node = self.get_healthy_node()
-                blockchain_state = node['blockchain_state']
+                if not self.blockchain_state["sync"]["synced"]:
+                    self.log.warning("Not synced, waiting")
+                    await asyncio.sleep(60)
+                    continue
 
-                peak_height = blockchain_state['peak'].height
-                coin_records: List[CoinRecord] = await node['rpc_client'].get_coin_records_by_puzzle_hash(
+                peak_height = self.blockchain_state["peak"].height
+                coin_records: List[CoinRecord] = await self.node_rpc_client.get_coin_records_by_puzzle_hash(
                     wallet['puzzle_hash'],
                     include_spent_coins=False,
                     start_height=self.scan_current_height,
                 )
 
                 if self.absorbed_extra_coins:
-                    for cr in await node['rpc_client'].get_coin_records_by_names(
+                    for cr in await self.node_rpc_client.get_coin_records_by_names(
                         self.absorbed_extra_coins,
                         include_spent_coins=True,
                         start_height=self.scan_start_height,
@@ -763,7 +685,7 @@ class Pool:
                     # if not await self.store.block_exists(c.coin.parent_coin_info.hex()):
                     #     # Check if its a double spend to absorb with a fee
                     #     parent_coin_record: Optional[CoinRecord] = (
-                    #         await node['rpc_client'].get_coin_record_by_name(
+                    #         await self.node_rpc_client.get_coin_record_by_name(
                     #             c.coin.parent_coin_info,
                     #         )
                     #     )
@@ -776,7 +698,7 @@ class Pool:
                         result = None
                         try:
                             result = await find_reward_from_coinrecord(
-                                node['rpc_client'],
+                                self.node_rpc_client,
                                 self.store,
                                 c,
                             )
@@ -786,7 +708,7 @@ class Pool:
                         if result is not None:
                             reward_coin, farmer = result
                             self.log.info('New coin farmed by %r', farmer.launcher_id.hex())
-                            pool_size, etw = await self.partials.get_pool_size_and_etw(node)
+                            pool_size, etw = await self.partials.get_pool_size_and_etw()
 
                             await self.store.add_block(
                                 reward_coin, 0, c.coin.parent_coin_info, farmer, pool_size, etw,
@@ -881,9 +803,6 @@ class Pool:
                         self.log.info(f"No points for any farmer. Waiting {self.payment_interval}")
 
                 await asyncio.sleep(self.payment_interval)
-            except NoHealthyNode:
-                self.log.error('No healthy node, skipping creating payment loop.')
-                await asyncio.sleep(60)
             except asyncio.CancelledError:
                 self.log.info(
                     "Cancelled create_payments_loop (wallet %s), closing", wallet['fingerprint']
@@ -897,8 +816,7 @@ class Pool:
     async def submit_payment_loop(self, wallet):
         while True:
             try:
-                node = self.get_healthy_node()
-                node_rpc_client = node['rpc_client']
+                peak_height = self.blockchain_state["peak"].height
                 try:
                     await wallet['rpc_client'].log_in(fingerprint=wallet['fingerprint'])
                 except aiohttp.client_exceptions.ClientConnectorError:
@@ -909,7 +827,7 @@ class Pool:
                     await asyncio.sleep(30)
                     continue
 
-                if not wallet['synced']:
+                if not self.blockchain_state["sync"]["synced"] or not wallet['synced']:
                     self.log.warning("Waiting for wallet %s sync", wallet['fingerprint'])
                     await asyncio.sleep(30)
                     continue
@@ -974,7 +892,7 @@ class Pool:
                         )
 
                         if additions and self.payment_fee == PaymentFee.AUTO:
-                            payment_fee = node['blockchain_mempool_full_pct'] > 10
+                            payment_fee = self.blockchain_mempool_full_pct > 10
                             self.log.info('Payment fee is AUTO. Fees? %r', payment_fee)
                         else:
                             payment_fee = self.payment_fee == PaymentFee.TRUE
@@ -996,7 +914,7 @@ class Pool:
                                 # Calculate minimum cost automatically
                                 if self.payment_fee_absolute == -1:
                                     transaction: TransactionRecord = await create_transaction(
-                                        node_rpc_client,
+                                        self.node_rpc_client,
                                         wallet,
                                         self.store,
                                         additions,
@@ -1023,7 +941,7 @@ class Pool:
                             continue
 
                         transaction: TransactionRecord = await create_transaction(
-                            node_rpc_client,
+                            self.node_rpc_client,
                             wallet,
                             self.store,
                             additions,
@@ -1040,14 +958,13 @@ class Pool:
                         self.log.info(f"Transaction: {transaction}")
                         await self.store.add_transaction(transaction, payment_targets)
 
-                    peak_height = await wallet['rpc_client'].get_height_info()
                     while (
                         not transaction.confirmed or not (
                             peak_height - transaction.confirmed_at_height
                         ) > self.confirmation_security_threshold
                     ):
                         transaction = await wallet['rpc_client'].get_transaction(wallet['id'], transaction.name)
-                        peak_height = await wallet['rpc_client'].get_height_info()
+                        peak_height = self.blockchain_state["peak"].height
                         self.log.info(
                             f"Waiting for transaction to obtain {self.confirmation_security_threshold} confirmations"
                         )
@@ -1062,9 +979,6 @@ class Pool:
 
                     asyncio.create_task(self.notifications.payment(payment_targets))
 
-            except NoHealthyNode:
-                self.log.error('No healthy node, skipping submitting payment.')
-                await asyncio.sleep(60)
             except asyncio.CancelledError:
                 self.log.info("Cancelled submit_payment_loop, closing")
                 return
@@ -1131,22 +1045,18 @@ class Pool:
             except Exception as e:
                 self.log.error(f"Unexpected error: {e}", exc_info=True)
 
-    async def get_signage_point_or_eos(self, partial, node=None):
-        if node is not None:
-            node_rpc_client = node['rpc_client']
-        else:
-            node_rpc_client = self.get_healthy_node()['rpc_client']
+    async def get_signage_point_or_eos(self, partial):
         if partial.payload.end_of_sub_slot:
             response = self.recent_eos.get(partial.payload.sp_hash)
             if not response:
-                response = await node_rpc_client.get_recent_signage_point_or_eos(
+                response = await self.node_rpc_client.get_recent_signage_point_or_eos(
                     None, partial.payload.sp_hash,
                 )
                 self.recent_eos.put(partial.payload.sp_hash, response)
         else:
             response = self.recent_signage_point.get(partial.payload.sp_hash)
             if not response:
-                response = await node_rpc_client.get_recent_signage_point_or_eos(
+                response = await self.node_rpc_client.get_recent_signage_point_or_eos(
                     partial.payload.sp_hash, None
                 )
                 self.recent_signage_point.put(partial.payload.sp_hash, response)
@@ -1160,8 +1070,7 @@ class Pool:
         points_received: uint64,
     ) -> None:
         try:
-            node = self.get_healthy_node()
-            response = await self.get_signage_point_or_eos(partial, node=node)
+            response = await self.get_signage_point_or_eos(partial)
             if response is None or response["reverted"]:
                 if partial.payload.end_of_sub_slot:
                     self.log.info(f"Partial EOS reverted: {partial.payload.sp_hash}")
@@ -1197,7 +1106,7 @@ class Pool:
             # Now we need to check to see that the singleton in the blockchain is still assigned to this pool
             singleton_state_tuple: Optional[
                 Tuple[CoinSpend, PoolState, bool]
-            ] = await self.get_and_validate_singleton_state(node, partial.payload.launcher_id)
+            ] = await self.get_and_validate_singleton_state(partial.payload.launcher_id)
 
             if singleton_state_tuple is None:
                 self.log.info(f"Invalid singleton {partial.payload.launcher_id}")
@@ -1268,10 +1177,9 @@ class Pool:
                     f"Farmer with launcher_id {request.payload.launcher_id} already known.",
                 )
 
-            node = self.get_healthy_node()
             singleton_state_tuple: Optional[
                 Tuple[CoinSpend, PoolState, bool]
-            ] = await self.get_and_validate_singleton_state(node, request.payload.launcher_id)
+            ] = await self.get_and_validate_singleton_state(request.payload.launcher_id)
 
             if singleton_state_tuple is None:
                 return error_dict(PoolErrorCode.INVALID_SINGLETON, f"Invalid singleton {request.payload.launcher_id}")
@@ -1297,14 +1205,12 @@ class Pool:
             if not AugSchemeMPL.verify(last_state.owner_pubkey, request.payload.get_hash(), request.signature):
                 return error_dict(PoolErrorCode.INVALID_SIGNATURE, "Invalid signature")
 
-            launcher_coin: Optional[CoinRecord] = await node['rpc_client'].get_coin_record_by_name(
+            launcher_coin: Optional[CoinRecord] = await self.node_rpc_client.get_coin_record_by_name(
                 request.payload.launcher_id
             )
             assert launcher_coin is not None and launcher_coin.spent
 
-            launcher_solution: Optional[CoinSpend] = await get_coin_spend(
-                node['rpc_client'], launcher_coin,
-            )
+            launcher_solution: Optional[CoinSpend] = await get_coin_spend(self.node_rpc_client, launcher_coin)
             delay_time, delay_puzzle_hash = get_delayed_puz_info_from_launcher_spend(launcher_solution)
 
             if delay_time < 3600:
@@ -1343,7 +1249,7 @@ class Pool:
             # Add new farmer singleton to the list of known singleton puzzles
             singleton_state_tuple: Optional[
                 Tuple[CoinSpend, PoolState, bool]
-            ] = await self.get_and_validate_singleton_state(node, request.payload.launcher_id)
+            ] = await self.get_and_validate_singleton_state(request.payload.launcher_id)
 
             return PostFarmerResponse(self.welcome_message).to_json_dict()
 
@@ -1357,10 +1263,9 @@ class Pool:
         if farmer_record is None:
             return error_dict(PoolErrorCode.FARMER_NOT_KNOWN, f"Farmer with launcher_id {launcher_id} not known.")
 
-        node = self.get_healthy_node()
         singleton_state_tuple: Optional[
             Tuple[CoinSpend, PoolState, bool]
-        ] = await self.get_and_validate_singleton_state(node, launcher_id)
+        ] = await self.get_and_validate_singleton_state(launcher_id)
 
         if singleton_state_tuple is None:
             return error_dict(PoolErrorCode.INVALID_SINGLETON, f"Invalid singleton {request.payload.launcher_id}")
@@ -1431,7 +1336,7 @@ class Pool:
         return response_dict
 
     async def get_and_validate_singleton_state(
-        self, node, launcher_id: bytes32, raise_exc=False,
+        self, launcher_id: bytes32, raise_exc=False,
     ) -> Optional[Tuple[CoinSpend, PoolState, bool]]:
         """
         :return: the state of the singleton, if it currently exists in the blockchain, and if it is assigned to
@@ -1445,10 +1350,10 @@ class Pool:
             farmer_rec: Optional[FarmerRecord] = await self.store.get_farmer_record(launcher_id)
             singleton_task = asyncio.create_task(
                 get_singleton_state(
-                    node['rpc_client'],
+                    self.node_rpc_client,
                     launcher_id,
                     farmer_rec,
-                    node['blockchain_state']['peak'].height,
+                    self.blockchain_state["peak"].height,
                     self.confirmation_security_threshold,
                     self.constants.GENESIS_CHALLENGE,
                     raise_exc=raise_exc,
@@ -1485,14 +1390,11 @@ class Pool:
             self.log.info(f"Invalid singleton state {singleton_tip_state.state} for launcher_id {launcher_id}")
             is_pool_member = False
         elif singleton_tip_state.state == PoolSingletonState.LEAVING_POOL.value:
-            coin_record: Optional[CoinRecord] = await node['rpc_client'].get_coin_record_by_name(
+            coin_record: Optional[CoinRecord] = await self.node_rpc_client.get_coin_record_by_name(
                 buried_singleton_tip.coin.name()
             )
             assert coin_record is not None
-            if (
-                node['blockchain_state']['peak'].height - coin_record.confirmed_block_index >
-                self.relative_lock_height
-            ):
+            if self.blockchain_state["peak"].height - coin_record.confirmed_block_index > self.relative_lock_height:
                 self.log.info(f"launcher_id {launcher_id} got enough confirmations to leave the pool")
                 is_pool_member = False
 
