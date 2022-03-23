@@ -59,7 +59,7 @@ class InfluxdbStore(object):
 
     async def add_mempool(self, size: int, cost: int, max_cost: int):
         p = Point('mempool').field('size', size).field('cost', cost).field('max_cost',
-            max_cost).field('full_pct', (cost / max_cost) * 100)
+            max_cost).field('full_pct', float((cost / max_cost) * 100))
         return await self._write(bucket=self.bucket, record=p)
 
     async def add_netspace(self, size: int):
