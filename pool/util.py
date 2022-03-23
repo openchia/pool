@@ -197,8 +197,13 @@ def days_pooling(
 ) -> int:
     if not is_pool_member:
         return 0
+
     if not joined_at:
         joined_at = datetime(2021, 8, 9, tzinfo=timezone.utc)
+
+    # Means has joined again
+    if left_at and joined_at > left_at:
+        left_at = None
 
     if not left_at:
         left_at = datetime.now(timezone.utc)

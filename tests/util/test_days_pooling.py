@@ -1,5 +1,6 @@
 import pytest
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 from pool.util import days_pooling
 
@@ -25,8 +26,10 @@ def test__days_pooling__not_member():
     (
         datetime(2021, 10, 1, tzinfo=timezone.utc),
         datetime(2020, 10, 1, tzinfo=timezone.utc),
-        0
+        31
     ),
 ])
-def test__days_pooling__(joined_at, left_at, days):
+@patch('pool.util.datetime')
+def test__days_pooling__(mock, joined_at, left_at, days):
+    mock.now.return_value = datetime(2021, 11, 1, tzinfo=timezone.utc)
     assert days_pooling(joined_at, left_at, True) == days
