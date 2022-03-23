@@ -544,6 +544,13 @@ class Pool:
                 asyncio.create_task(
                     self.store_ts.add_netspace(int(self.blockchain_state['space']))
                 )
+                asyncio.create_task(
+                    self.store_ts.add_mempool(
+                        int(self.blockchain_state['mempool_size']),
+                        int(self.blockchain_state['mempool_cost']),
+                        int(self.blockchain_state['mempool_max_total_cost']),
+                    )
+                )
 
                 await asyncio.sleep(30)
             except asyncio.CancelledError:
