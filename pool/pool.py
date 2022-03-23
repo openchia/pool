@@ -260,7 +260,8 @@ class Pool:
         await self.store_ts.connect()
         await self.partials.load_from_store()
 
-        for node in self.nodes:
+        working_node = False
+        for node in list(self.nodes):
             args = [node['hostname'], uint16(node['rpc_port'])]
             if node['ssl_dir']:
                 args += [
@@ -280,11 +281,14 @@ class Pool:
                 args += [DEFAULT_ROOT_PATH, self.config]
 
             try:
-                node['rpc_client'] = await FullNodeRpcClient.create(
-                    node['hostname'], uint16(node['rpc_port']), DEFAULT_ROOT_PATH, self.config
-                )
+                node['rpc_client'] = await FullNodeRpcClient.create(*args)
             except Exception:
-                self.log.error('Failed to connect to %s', node['hostname'], exc_info=True)
+                self.log.error(
+                    'Failed to create connection to %s. Removing it.',
+                    node['hostname'],
+                    exc_info=True,
+                )
+                self.nodes.remove(node)
             else:
                 working_node = True
 
@@ -329,12 +333,13 @@ class Pool:
                         e,
                     )
                 else:
+                    # Select the first by default
                     if not working_node:
                         working_node = node
             if not working_node:
                 await asyncio.sleep(2)
-        self.node_rpc_client = node['rpc_client']
-        self.blockchain_state = node['blockchain_state']
+        self.node_rpc_client = working_node['rpc_client']
+        self.blockchain_state = working_node['blockchain_state']
 
         try:
             for wallet in self.wallets:
@@ -472,7 +477,9 @@ class Pool:
         if cur_node is None:
             raise RuntimeError('No healthy node available')
 
-        self.node_rpc_client = cur_node['rpc_client']
+        if self.node_rpc_client != cur_node['rpc_client']:
+            self.log.warning('Switching to node %r', cur_node['hostname'])
+            self.node_rpc_client = cur_node['rpc_client']
         self.blockchain_state = cur_node['blockchain_state']
         self.blockchain_mempool_full_pct = cur_node['blockchain_mempool_full_pct']
 
