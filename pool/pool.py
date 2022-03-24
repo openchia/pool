@@ -787,8 +787,8 @@ class Pool:
                     wallet['puzzle_hash']
                 )
 
-                total_amount_claimed = 0
-                absorbs = []
+                total_amount_claimed: int = 0
+                absorbs: List = []
                 for c in list(coin_records):
 
                     if c.coin.amount == 0:
@@ -830,14 +830,10 @@ class Pool:
                             self.log.error('Failed to find absorb', exc_info=True)
 
                         if result is not None:
+                            # Create block record in database later so we can order by
+                            # farmed height.
                             reward_coin, farmer = result
-                            self.log.info('New coin farmed by %r', farmer.launcher_id.hex())
-                            pool_size, etw = await self.partials.get_pool_size_and_etw()
-
-                            await self.store.add_block(
-                                reward_coin, 0, c.coin.parent_coin_info, farmer, pool_size, etw,
-                            )
-                            absorbs.append((reward_coin, farmer))
+                            absorbs.append((reward_coin, farmer, c.coin.parent_coin_info))
                         else:
                             coin_records.remove(real_coin)
                             self.log.info(
@@ -848,7 +844,21 @@ class Pool:
                     total_amount_claimed += real_coin.coin.amount
 
                 if absorbs:
-                    await self.run_hook('absorb', absorbs)
+                    pool_size, etw = await self.partials.get_pool_size_and_etw()
+                    hook_args = []
+                    for reward, farmer, singleton in sorted(
+                        absorbs,
+                        key=lambda x: int.from_bytes(
+                            bytes(x[0].coin.parent_coin_info)[16:], 'big'
+                        ),
+                    ):
+                        hook_args.append((reward, farmer))
+                        self.log.info('New coin farmed by %r', farmer.launcher_id.hex())
+
+                        await self.store.add_block(
+                            reward_coin, 0, singleton, farmer, pool_size, etw,
+                        )
+                    await self.run_hook('absorb', hook_args)
 
                 if len(coin_records) == 0:
                     self.scan_move_payment_pending = False
