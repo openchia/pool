@@ -134,8 +134,8 @@ async def test__subtract_fees(wallet_rpc_client, payment_targets, total_cost, rv
             'pool_fee_amount': int(REWARD_XCH * 0.01),
             'referral_fee_amount': 0,
             'additions': {
-                '1': {'amount': int(REWARD_XCH * 0.99 * 0.1)},
-                '2': {'amount': int(REWARD_XCH * 0.99 * 0.9)},
+                '1': {'amount': int(REWARD_XCH * 0.99 * 0.1), 'pool_fee': int(REWARD_XCH * 0.01 * 0.1)},
+                '2': {'amount': int(REWARD_XCH * 0.99 * 0.9), 'pool_fee': int(REWARD_XCH * 0.01 * 0.9)},
             },
             'amount_to_distribute': int(REWARD_XCH * 0.99),
             'remainings': 0,
@@ -160,9 +160,9 @@ async def test__subtract_fees(wallet_rpc_client, payment_targets, total_cost, rv
             ),
             'referral_fee_amount': 0,
             'additions': {
-                '1': {'amount': int(D(REWARD_XCH) * D('0.99') * D('0.05'))},
-                '2': {'amount': int(REWARD_XCH * (1 - 0.00951) * 0.45)},
-                '3': {'amount': int(REWARD_XCH * 0.991 * 0.5)},
+                '1': {'amount': int(D(REWARD_XCH) * D('0.99') * D('0.05')), 'pool_fee': int(D(REWARD_XCH) * D('0.01') * D('0.05'))},
+                '2': {'amount': int(REWARD_XCH * (1 - 0.00951) * 0.45), 'pool_fee': int(REWARD_XCH * (0.00951) * 0.45) + 1},
+                '3': {'amount': int(REWARD_XCH * 0.991 * 0.5), 'pool_fee': int(REWARD_XCH * 0.009 * 0.5) + 1},
             },
             'amount_to_distribute': int(REWARD_XCH * 0.99 * 0.05) + int(REWARD_XCH * (1 - 0.00951) * 0.45) + int(REWARD_XCH * 0.991 * 0.5),
             'remainings': 0,
@@ -187,9 +187,9 @@ async def test__subtract_fees(wallet_rpc_client, payment_targets, total_cost, rv
             ),
             'referral_fee_amount': 0,
             'additions': {
-                '1': {'amount': int(D(REWARD_XCH) * D('0.99') * D('0.05'))},
-                '2': {'amount': int(REWARD_XCH * (1 - 0.00851) * 0.45)},
-                '3': {'amount': int(REWARD_XCH * 0.9925 * 0.5)},
+                '1': {'amount': int(D(REWARD_XCH) * D('0.99') * D('0.05')), 'pool_fee': int(D(REWARD_XCH) * D('0.01') * D('0.05'))},
+                '2': {'amount': int(REWARD_XCH * (1 - 0.00851) * 0.45), 'pool_fee': int(REWARD_XCH * 0.00851 * 0.45)},
+                '3': {'amount': int(REWARD_XCH * 0.9925 * 0.5), 'pool_fee': int(REWARD_XCH * 0.0075 * 0.5)},
             },
             'amount_to_distribute': int(REWARD_XCH * 0.99 * 0.05) + int(REWARD_XCH * (1 - 0.00851) * 0.45) + int(REWARD_XCH * 0.9925 * 0.5),
             'remainings': 0,
@@ -219,10 +219,10 @@ async def test__subtract_fees(wallet_rpc_client, payment_targets, total_cost, rv
             ),
             'referral_fee_amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2),
             'additions': {
-                '1': {'amount': int(D(REWARD_XCH) * D('0.99') * D('0.05'))},
-                '2': {'amount': int(REWARD_XCH * (1 - 0.00851) * 0.45)},
-                '3': {'amount': int(REWARD_XCH * 0.9925 * 0.5), 'referral': 11, 'referral_amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2)},
-                '4': {'amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2)},
+                '1': {'amount': int(D(REWARD_XCH) * D('0.99') * D('0.05')), 'pool_fee': int(D(REWARD_XCH) * D('0.01') * D('0.05'))},
+                '2': {'amount': int(REWARD_XCH * (1 - 0.00851) * 0.45), 'pool_fee': int(REWARD_XCH * 0.00851 * 0.45)},
+                '3': {'amount': int(REWARD_XCH * 0.9925 * 0.5), 'referral': 11, 'referral_amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2), 'pool_fee': int(REWARD_XCH * 0.0075 * 0.5)},
+                '4': {'amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2), 'pool_fee': 0},
             },
             'amount_to_distribute': int(REWARD_XCH * 0.99 * 0.05) + int(REWARD_XCH * (1 - 0.00851) * 0.45) + int(REWARD_XCH * 0.9925 * 0.5) + int(REWARD_XCH * 0.0075 * 0.5 * 0.2),
             'remainings': 0,
@@ -259,10 +259,10 @@ async def test__subtract_fees(wallet_rpc_client, payment_targets, total_cost, rv
                 int(REWARD_XCH * 0.01 * 0.05 * 0.2)
             ),
             'additions': {
-                '1': {'amount': int(REWARD_XCH * 0.99 * 0.05), 'referral': 12, 'referral_amount': int(REWARD_XCH * 0.05 * 0.01 * 0.2)},
-                '2': {'amount': int(REWARD_XCH * (1 - 0.00851) * 0.45) + int(REWARD_XCH * 0.05 * 0.01 * 0.2)},
-                '3': {'amount': int(REWARD_XCH * 0.9925 * 0.5), 'referral': 11, 'referral_amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2)},
-                '4': {'amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2)},
+                '1': {'amount': int(REWARD_XCH * 0.99 * 0.05), 'referral': 12, 'referral_amount': int(REWARD_XCH * 0.05 * 0.01 * 0.2), 'pool_fee': int(REWARD_XCH * 0.01 * 0.05)},
+                '2': {'amount': int(REWARD_XCH * (1 - 0.00851) * 0.45) + int(REWARD_XCH * 0.05 * 0.01 * 0.2), 'pool_fee': int(REWARD_XCH * 0.00851 * 0.45)},
+                '3': {'amount': int(REWARD_XCH * 0.9925 * 0.5), 'referral': 11, 'referral_amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2), 'pool_fee': int(REWARD_XCH * 0.0075 * 0.5)},
+                '4': {'amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2), 'pool_fee': 0},
             },
             'amount_to_distribute': (
                 int(REWARD_XCH * 0.99 * 0.05) +
