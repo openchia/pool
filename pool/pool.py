@@ -596,12 +596,17 @@ class Pool:
                 scan_phs: List[bytes32] = list(self.scan_p2_singleton_puzzle_hashes)
                 peak_height = self.blockchain_state["peak"].height
 
-                # Only get puzzle hashes with a certain number of confirmations or more, to avoid reorg issues
-                coin_records: List[CoinRecord] = await self.node_rpc_client.get_coin_records_by_puzzle_hashes(
-                    scan_phs,
-                    include_spent_coins=False,
-                    start_height=self.scan_current_height,
-                )
+                coin_records: List[CoinRecord] = []
+                scan_per_round = 200
+                for i in range(0, len(scan_phs), scan_per_round):
+                    coin_records += await self.node_rpc_client.get_coin_records_by_puzzle_hashes(
+                        scan_phs[i:i + scan_per_round],
+                        include_spent_coins=False,
+                        start_height=self.scan_current_height,
+                    )
+                    # Sleep a little to possibly not overload the node
+                    await asyncio.sleep(2)
+
                 self.log.info(
                     f"Scanning for block rewards from {self.scan_current_height} to {peak_height}. "
                     f"Found: {len(coin_records)}"
