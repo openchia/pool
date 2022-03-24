@@ -607,7 +607,7 @@ class Pool:
                     f"Found: {len(coin_records)}"
                 )
                 ph_to_amounts: Dict[bytes32, int] = {}
-                ph_to_coins: Dict[bytes32, List[CoinRecord]] = {}
+                valid_coin_records: List[CoinRecord] = []
                 for cr in coin_records:
                     if not cr.coinbase:
                         self.log.info(f"Non coinbase coin: {cr.coin}, ignoring")
@@ -615,28 +615,31 @@ class Pool:
 
                     if cr.coin.puzzle_hash not in ph_to_amounts:
                         ph_to_amounts[cr.coin.puzzle_hash] = 0
-                        ph_to_coins[cr.coin.puzzle_hash] = []
                     ph_to_amounts[cr.coin.puzzle_hash] += cr.coin.amount
-                    ph_to_coins[cr.coin.puzzle_hash].append(cr)
+                    valid_coin_records.append(cr)
 
                 # For each p2sph, get the FarmerRecords
-                farmer_records = await self.store.get_farmer_records_for_p2_singleton_phs(
-                    set(ph_to_amounts.keys())
-                )
+                ph_to_farmer = {
+                    i.p2_singleton_puzzle_hash: i
+                    for i in await self.store.get_farmer_records_for_p2_singleton_phs(
+                        set(ph_to_amounts.keys())
+                    )
+                }
 
                 # For each singleton, create, submit, and save a claim transaction
                 claimable_amounts = 0
                 not_claimable_amounts = 0
-                for rec in farmer_records:
+                for rec in ph_to_farmer.values():
                     if rec.is_pool_member:
                         claimable_amounts += ph_to_amounts[rec.p2_singleton_puzzle_hash]
                     else:
                         not_claimable_amounts += ph_to_amounts[rec.p2_singleton_puzzle_hash]
-                        self.log.info(
-                            "Not claimable from %s: %s",
-                            rec.launcher_id.hex(),
-                            ph_to_amounts[rec.p2_singleton_puzzle_hash] / (10**12),
-                        )
+                    self.log.info(
+                        '%s from %s: %s',
+                        'Claimable' if rec.is_pool_member else 'Not claimable',
+                        rec.launcher_id.hex(),
+                        ph_to_amounts[rec.p2_singleton_puzzle_hash] / (10 ** 12),
+                    )
 
                 if len(coin_records) > 0:
                     self.log.info(f"Claimable amount: {claimable_amounts / (10**12)}")
@@ -644,11 +647,35 @@ class Pool:
 
                 if claimable_amounts == 0:
                     self.scan_move_collect_pending = False
+                    await asyncio.sleep(self.collect_pool_rewards_interval)
+                    continue
                 else:
                     self.scan_move_collect_pending = True
 
-                for rec in farmer_records:
+                farmers_seen = set()
+
+                # Absorb coins in chronological order (farmed block)
+                for cr in sorted(
+                    valid_coin_records,
+                    key=lambda x: int.from_bytes(
+                        bytes(x.coin.parent_coin_info)[16:], 'big'
+                    ),
+                ):
+
+                    rec = ph_to_farmer.get(cr.coin.puzzle_hash)
+                    if rec is None:
+                        self.log.error('Could not find farmer for %r', cr.coin.puzzle_hash)
+                        continue
+
+                    # Absorb only one coin at a time per farmer.
+                    # That is because the singleton will change for each absorbeb coin.
+                    # Also We cannot exceed max block cost
+                    # (number of absorbeb coins per transaction).
+                    if rec.launcher_id in farmers_seen:
+                        continue
+
                     if not rec.is_pool_member:
+                        # TODO: Fix if this coin record is assigned to the wallet pool?
                         continue
 
                     singleton_tip: Optional[Coin] = get_most_recent_singleton_coin_from_coin_spend(
@@ -670,24 +697,13 @@ class Pool:
                         )
                         continue
 
-                    # Absorb only one coin at a time per farmer.
-                    # That is because the singleton will change for each absorbeb coin.
-                    # Also We cannot exceed max block cost
-                    # (number of absorbeb coins per transaction).
-                    coins_to_absorb = sorted(
-                        ph_to_coins[rec.p2_singleton_puzzle_hash],
-                        key=lambda x: int.from_bytes(
-                            bytes(x.coin.parent_coin_info)[16:], 'big'
-                        ),
-                    )[:1]
-
                     try:
                         spend_bundle = await create_absorb_transaction(
                             self.node_rpc_client,
                             self.wallets,
                             rec,
                             self.blockchain_state["peak"].height,
-                            coins_to_absorb,
+                            [cr],
                             self.absorb_fee,
                             self.absorb_fee_absolute,
                             self.blockchain_mempool_full_pct,
@@ -705,7 +721,7 @@ class Pool:
                             self.wallets,
                             rec,
                             self.blockchain_state["peak"].height,
-                            coins_to_absorb,
+                            [cr],
                             False,
                             0,
                             self.blockchain_mempool_full_pct,
@@ -718,7 +734,15 @@ class Pool:
 
                     push_tx_response: Dict = await self.node_rpc_client.push_tx(spend_bundle)
                     if push_tx_response["status"] == "SUCCESS":
-                        self.log.info(f"Submitted transaction successfully: {spend_bundle.name().hex()}")
+                        self.log.info(
+                            f"Submitted transaction successfully: {spend_bundle.name().hex()}"
+                        )
+                        # See farmers_seen comment above
+                        farmers_seen.add(rec.launcher_id)
+
+                        # Best effort to make sure coins show in the same order in the wallet
+                        # (confirmed block index)
+                        await asyncio.sleep(30)
                     else:
                         self.log.error(f"Error submitting transaction: {push_tx_response}")
 
