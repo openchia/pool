@@ -40,6 +40,7 @@ async def spend_with_fee(
     constants: ConsensusConstants,
     absolute_fee: Optional[int],
     mojos_per_cost: int,
+    used_fee_coins: List,
 ):
 
     rewarded_coin: Coin = spends[0].additions()[-1]
@@ -66,6 +67,7 @@ async def spend_with_fee(
         # Find a coin that is big enough for the fee and also not a reward
         for coin in transaction.spend_bundle.removals():
             if (
+                coin.name() not in used_fee_coins and  # Do not use same coin twice between absorbs
                 coin.amount >= (absolute_fee or 200000000) and
                 coin.amount != calculate_pool_reward(uint32(1))
             ):
@@ -123,6 +125,7 @@ async def spend_with_fee(
             coin_announcements=[Announcement(p2_coin.name(), b"$")],
             fee=uint64(fee),
         )
+        used_fee_coins.append(spend_coin.name())
         return SpendBundle.aggregate([original_sb, transaction.spend_bundle])
     else:
         return await create_spendbundle_with_fee(

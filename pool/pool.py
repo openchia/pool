@@ -658,6 +658,7 @@ class Pool:
                     self.scan_move_collect_pending = True
 
                 farmers_seen = set()
+                used_fee_coins = []
 
                 # Absorb coins in chronological order (farmed block)
                 for cr in sorted(
@@ -711,6 +712,7 @@ class Pool:
                             [cr],
                             self.absorb_fee,
                             self.absorb_fee_absolute,
+                            used_fee_coins,
                             self.blockchain_mempool_full_pct,
                             self.mojos_per_cost,
                             self.constants,
@@ -729,6 +731,7 @@ class Pool:
                             [cr],
                             False,
                             0,
+                            None,
                             self.blockchain_mempool_full_pct,
                             self.mojos_per_cost,
                             self.constants,

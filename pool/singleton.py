@@ -161,6 +161,7 @@ async def create_absorb_transaction(
     reward_coin_records: List[CoinRecord],
     fee: AbsorbFee,
     absolute_fee: Optional[int],
+    used_fee_coins: Optional[List],
     mempool_full_pct: int,
     mojos_per_cost: int,
     constants: ConsensusConstants,
@@ -216,7 +217,16 @@ async def create_absorb_transaction(
         with_fee = fee == AbsorbFee.TRUE
 
     if with_fee:
-        return await spend_with_fee(node_rpc_client, wallets, all_spends, constants, absolute_fee, mojos_per_cost)
+        assert used_fee_coins is not None
+        return await spend_with_fee(
+            node_rpc_client,
+            wallets,
+            all_spends,
+            constants,
+            absolute_fee,
+            mojos_per_cost,
+            used_fee_coins,
+        )
     else:
         return SpendBundle(all_spends, G2Element())
 
