@@ -861,7 +861,7 @@ class Pool:
                         self.log.info('New coin farmed by %r', farmer.launcher_id.hex())
 
                         await self.store.add_block(
-                            reward_coin, 0, singleton, farmer, pool_size, etw,
+                            reward, 0, singleton, farmer, pool_size, etw,
                         )
                     await self.run_hook('absorb', hook_args)
 
