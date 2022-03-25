@@ -1091,7 +1091,7 @@ class Pool:
                             payment_targets,
                         )
 
-                        self.log.info(f"Submitting a payment: {dict(payment_targets)}")
+                        self.log.info('Submitting a payment')
 
                         await wallet['rpc_client'].push_transaction(
                             wallet['id'], transaction
@@ -1118,7 +1118,7 @@ class Pool:
                         await asyncio.sleep(10)
 
                     await self.store.confirm_transaction(transaction, payment_targets)
-                    self.log.info(f"Successfully confirmed payments {dict(payment_targets)}")
+                    self.log.info(f'Successfully confirmed transaction {transaction.name}')
 
                     asyncio.create_task(self.notifications.payment(payment_targets))
 
