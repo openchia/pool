@@ -17,7 +17,7 @@ from chia.types.coin_spend import CoinSpend
 from chia.util.ints import uint64
 
 from ..record import FarmerRecord
-from ..util import RequestMetadata, days_pooling
+from ..util import RequestMetadata, calculate_effort, days_pooling
 
 # FIXME: hardcoded to 12 hours cool down
 COOLDOWN_LEFT_JOIN_HOURS = 12
@@ -464,25 +464,17 @@ class PgsqlPoolStore(object):
         estimate_to_win: int,
     ) -> None:
         last_block = await self._execute(
-            "SELECT estimate_to_win, timestamp FROM block ORDER BY -confirmed_block_index LIMIT 1"
+            "SELECT estimate_to_win, timestamp FROM block ORDER BY -farmed_height LIMIT 1"
         )
         if last_block and last_block[0]:
             last_etw = last_block[0][0]
             last_timestamp = last_block[0][1]
-
-            # Effective ETW is the mean between last ETW and current ETW
-            if last_etw != -1:
-                effective_etw = (last_etw + estimate_to_win) / 2
-            else:
-                effective_etw = estimate_to_win
-
-            time_since_last = int(reward_record.timestamp) - last_timestamp
-            # If time is negative means we are adding a block that was won some time ago
-            # e.g. farmer that wasn't sending partials to the pool
-            if time_since_last < 0:
-                luck = 0
-            else:
-                luck = int((time_since_last / effective_etw) * 100)
+            luck = calculate_effort(
+                last_etw,
+                last_timestamp,
+                estimate_to_win,
+                int(reward_record.timestamp),
+            )
         else:
             luck = 100
 

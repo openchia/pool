@@ -233,3 +233,27 @@ def size_discount(launcher_size: int, size_discount: Dict) -> D:
             return D(discount)
     else:
         return D('0')
+
+
+def calculate_effort(
+    last_etw: int,
+    last_timestamp: int,
+    now_etw: int,
+    now_timestamp: int,
+) -> int:
+
+    # Effective ETW is the mean between last ETW and current ETW
+    if last_etw != -1:
+        effective_etw = (last_etw + now_etw) / 2
+    else:
+        effective_etw = now_etw
+
+    time_since_last = now_timestamp - last_timestamp
+    # If time is negative means we are adding a block that was won some time ago
+    # e.g. farmer that wasn't sending partials to the pool
+    if time_since_last < 0:
+        effort = 0
+    else:
+        effort = int((time_since_last / effective_etw) * 100)
+
+    return effort
