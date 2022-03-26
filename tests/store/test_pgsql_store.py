@@ -79,6 +79,8 @@ from pool.store.pgsql_store import left_join_cooldown
             [
                 ('left_last_at', datetime(2022, 3, 1, 4, tzinfo=timezone.utc)),
                 ('left_at', datetime(2022, 3, 1, tzinfo=timezone.utc)),
+                ('last_block_timestamp', None),
+                ('last_block_etw', None),
             ],
         ),
         # not in the pool
