@@ -29,7 +29,7 @@ class Launchers(object):
         for lid in await self.store.get_launchers_without_recent_partials(
             int(time.time() - self.time_target)
         ):
-            await self.add_launcher(lid)
+            await self.add_singleton(lid)
 
         while True:
             try:
