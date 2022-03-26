@@ -53,7 +53,7 @@ from chia.pools.pool_puzzles import (
 from .absorb_spend import NoCoinForFee
 from .difficulty_adjustment import get_new_difficulty
 from .fee import get_cost
-from .launchers import LaunchersSingleton
+from .launchers import Launchers
 from .notifications import Notifications
 from .partials import Partials
 from .payment import subtract_fees, create_share
@@ -70,6 +70,7 @@ from .task import task_exception
 from .types import AbsorbFee, PaymentFee
 from .util import (
     RequestMetadata,
+    calculate_effort,
     create_transaction,
     error_dict,
     payment_targets_to_additions,
@@ -367,12 +368,10 @@ class Pool:
             )
         self.get_peak_loop_task = asyncio.create_task(self.get_peak_loop())
 
-        launchers_singleton = LaunchersSingleton(self)
-        await self.partials.start(launchers_singleton)
+        self.launchers = Launchers(self)
+        await self.partials.start(self.launchers)
+        await self.launchers.start()
 
-        self.launchers_singleton_state_task = asyncio.create_task(
-            launchers_singleton.loop()
-        )
         self.xchprice_loop_task = asyncio.create_task(XCHPrice(self.store, self.store_ts).loop())
 
         await self.notifications.start()
@@ -390,9 +389,8 @@ class Pool:
             self.get_peak_loop_task.cancel()
 
         await self.partials.stop()
+        await self.launchers.stop()
 
-        if self.launchers_singleton_state_task is not None:
-            self.launchers_singleton_state_task.cancel()
         if self.xchprice_loop_task is not None:
             self.xchprice_loop_task.cancel()
 
@@ -579,6 +577,12 @@ class Pool:
             return SECONDS_PER_BLOCK
 
         return (curr.timestamp - past_curr.timestamp) / (curr.height - past_curr.height)
+
+    async def get_etw(self, size):
+        blockchain_space = self.blockchain_state['space']
+        proportion = size / blockchain_space if blockchain_space else -1
+        etw = int(await self.get_average_block_time() / proportion) if proportion else -1
+        return etw
 
     @task_exception
     async def collect_pool_rewards_loop(self):
@@ -797,7 +801,7 @@ class Pool:
 
                 total_amount_claimed: int = 0
                 absorbs: List = []
-                for c in list(coin_records):
+                for c in sorted(coin_records, key=lambda x: x.confirmed_block_index):
 
                     if c.coin.amount == 0:
                         coin_records.remove(c)
@@ -852,7 +856,9 @@ class Pool:
                     total_amount_claimed += real_coin.coin.amount
 
                 if absorbs:
-                    pool_size, etw = await self.partials.get_pool_size_and_etw()
+                    pool_size = await self.partials.get_pool_size()
+                    pool_etw = await self.get_etw(pool_size)
+
                     hook_args = []
                     for reward, farmer, singleton in sorted(
                         absorbs,
@@ -860,11 +866,33 @@ class Pool:
                             bytes(x[0].coin.parent_coin_info)[16:], 'big'
                         ),
                     ):
-                        hook_args.append((reward, farmer))
                         self.log.info('New coin farmed by %r', farmer.launcher_id.hex())
 
+                        launcher_etw = await self.get_etw(farmer.estimated_size)
+                        last_launcher_etw = farmer.last_block_etw or -1
+
+                        last_launcher_timestamp = await self.launchers.last_reward_update(farmer)
+                        if not last_launcher_timestamp:
+                            launcher_effort = -1
+                        else:
+                            launcher_effort = calculate_effort(
+                                last_launcher_etw,
+                                int(last_launcher_timestamp),
+                                launcher_etw,
+                                int(reward.timestamp),
+                            )
+
+                        hook_args.append((reward, farmer))
+
                         await self.store.add_block(
-                            reward, 0, singleton, farmer, pool_size, etw,
+                            reward,
+                            0,
+                            singleton,
+                            farmer,
+                            launcher_etw,
+                            launcher_effort,
+                            pool_size,
+                            pool_etw,
                         )
                     await self.run_hook('absorb', hook_args)
 
@@ -1281,8 +1309,10 @@ class Pool:
                         FarmerRecord.from_json_dict(farmer_dict), None,
                     )
                     # Reset PPLNS fields if left the pool
-                    await self.store.update_estimated_size_and_pplns(
-                        farmer_record.launcher_id.hex(), 0, 0, 0,
+                    await self.store.update_farmer(
+                        farmer_record.launcher_id.hex(),
+                        ['estimated_size', 'points_pplns', 'share_pplns'],
+                        [0, 0, 0],
                     )
                 await self.partials.remove_launcher(farmer_record.launcher_id)
                 return
@@ -1385,9 +1415,12 @@ class Pool:
                 None,
                 None,
                 None,
+                None,
+                None,
             )
             self.scan_p2_singleton_puzzle_hashes.add(p2_singleton_puzzle_hash)
             await self.store.add_farmer_record(farmer_record, metadata)
+            await self.launchers.add_last_reward(farmer_record)
 
             # Add new farmer singleton to the list of known singleton puzzles
             singleton_state_tuple: Optional[
@@ -1556,6 +1589,8 @@ class Pool:
             # switch back.
             self.log.info(f"Updating singleton state for {launcher_id}")
             singleton_coin = get_most_recent_singleton_coin_from_coin_spend(buried_singleton_tip)
+            if is_pool_member and not farmer_rec.is_pool_member and not farmer_rec.last_block_timestamp:
+                await self.launchers.add_last_reward(farmer_rec)
             await self.store.update_singleton(
                 farmer_rec, singleton_coin, buried_singleton_tip, buried_singleton_tip_state, is_pool_member
             )

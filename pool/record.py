@@ -28,6 +28,8 @@ class FarmerRecord(Streamable):
     left_last_at: Optional[str]
     email: Optional[str]
     estimated_size: uint64
+    last_block_timestamp: Optional[uint64]
+    last_block_etw: Optional[uint64]
     name: Optional[str]
     fcm_token: Optional[str]
     push_missing_partials_hours: Optional[uint64]

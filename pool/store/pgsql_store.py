@@ -52,6 +52,8 @@ def left_join_cooldown(
     elif not is_pool_member and was_pool_member:
         sql.append(('left_last_at', now))
         sql.append(('left_at', left_last_at))
+        sql.append(('last_block_timestamp', None))
+        sql.append(('last_block_etw', None))
 
     return sql
 
@@ -110,6 +112,8 @@ class PgsqlPoolStore(object):
             row[18],
             row[19],
             row[20],
+            row[21],
+            row[22],
         )
 
     async def add_farmer_record(self, farmer_record: FarmerRecord, metadata: RequestMetadata):
@@ -200,11 +204,6 @@ class PgsqlPoolStore(object):
             )
         }
 
-    async def update_estimated_size_and_pplns(self, launcher_id: str, size: int, points: int, share: Decimal):
-        await self._execute(
-            "UPDATE farmer SET estimated_size=%s, points_pplns=%s, share_pplns=%s WHERE launcher_id=%s", (size, points, share, launcher_id)
-        )
-
     async def update_difficulty(self, launcher_id: bytes32, difficulty: uint64):
         await self._execute(
             "UPDATE farmer SET difficulty=%s WHERE launcher_id=%s", (difficulty, launcher_id.hex())
@@ -254,16 +253,20 @@ class PgsqlPoolStore(object):
                 ),
             )
 
-    async def update_farmer(self, launcher_id: bytes32, attributes: List, values: List) -> None:
+    async def update_farmer(self, launcher_id, attributes: List, values: List) -> None:
         attrs = []
-        farmer_attributes = list(FarmerRecord.__annotations__.keys())
+        farmer_attributes = list(FarmerRecord.__annotations__.keys()) + [
+            'points_pplns', 'share_pplns', 'current_etw',
+        ]
         for i in attributes:
             if i not in farmer_attributes:
                 raise RuntimeError(f'{i} is not a valid farmer attribute')
             attrs.append(f'{i} = %s')
 
         values = list(values)
-        values.append(launcher_id.hex())
+        if isinstance(launcher_id, bytes32):
+            launcher_id = launcher_id.hex()
+        values.append(launcher_id)
         await self._execute(f"UPDATE farmer SET {', '.join(attrs)} WHERE launcher_id = %s", values)
 
     async def get_pay_to_singleton_phs(self) -> Set[bytes32]:
@@ -460,6 +463,8 @@ class PgsqlPoolStore(object):
         absorb_fee: int,
         singleton: bytes32,
         farmer: FarmerRecord,
+        launcher_etw: int,
+        launcher_effort: int,
         pool_space: int,
         estimate_to_win: int,
     ) -> None:
@@ -482,9 +487,9 @@ class PgsqlPoolStore(object):
 
         await self._execute(
             "INSERT INTO block ("
-            " name, singleton, timestamp, farmed_height, confirmed_block_index, puzzle_hash, amount, farmed_by_id, estimate_to_win, pool_space, luck, absorb_fee, xch_price"
+            " name, singleton, timestamp, farmed_height, confirmed_block_index, puzzle_hash, amount, farmed_by_id, estimate_to_win, pool_space, launcher_etw, launcher_effort, luck, absorb_fee, xch_price"
             ") VALUES ("
-            " %s,   %s,        %s,        %s,            %s,                    %s,          %s,     %s,           %s,              %s,         %s,   %s,         %s"
+            " %s,   %s,        %s,        %s,            %s,                    %s,          %s,     %s,           %s,              %s,         %s,           %s,              %s,   %s,         %s"
             ")",
             (
                 reward_record.name.hex(),
@@ -497,10 +502,25 @@ class PgsqlPoolStore(object):
                 farmer.launcher_id.hex(),
                 estimate_to_win,
                 pool_space,
+                launcher_etw,
+                launcher_effort,
                 luck,
                 absorb_fee,
                 json.dumps(globalinfo['xch_current_price']) if globalinfo else None,
             )
+        )
+
+        # Update last block timestamp and farmer ETW in farmer table to
+        # calculate next effort.
+        await self._execute(
+            'UPDATE farmer '
+            ' SET last_block_timestamp = %s, last_block_etw = %s '
+            ' WHERE launcher_id = %s',
+            (
+                int(reward_record.timestamp),
+                launcher_etw if launcher_etw != -1 else None,
+                farmer.launcher_id.hex(),
+            ),
         )
 
     async def block_exists(self, singleton: str) -> bool:

@@ -68,10 +68,11 @@ class PartialsCache(dict):
 
     def __init__(
             self, *args,
-            partials=None, store=None, store_ts=None, config=None, pool_config=None,
+            partials=None, pool=None, store=None, store_ts=None, config=None, pool_config=None,
             keep_interval: int = 86400,
             **kwargs):
         self.partials = partials
+        self.pool = pool
         self.store = store
         self.store_ts = store_ts
         self.config = config
@@ -141,8 +142,13 @@ class PartialsCache(dict):
             estimated_size / 1073741824,  # 1024 ^ 3
             share_pplns,
         )
-        await self.store.update_estimated_size_and_pplns(
-            launcher_id, estimated_size, points, share_pplns
+
+        current_etw = await self.pool.get_etw(estimated_size)
+
+        await self.store.update_farmer(
+            launcher_id,
+            ['estimated_size', 'points_pplns', 'share_pplns', 'current_etw'],
+            [estimated_size, points, share_pplns, current_etw],
         )
 
         asyncio.create_task(self.store_ts.add_launcher_size(launcher_id, estimated_size_24h, estimated_size_8h))
@@ -161,6 +167,7 @@ class Partials(object):
 
         self.cache = PartialsCache(
             partials=self,
+            pool=pool,
             store=self.store,
             store_ts=self.store_ts,
             config=self.config,
@@ -185,8 +192,8 @@ class Partials(object):
             self.cache.all.add(t, d, remove=False)
         await self.store.scrub_pplns(start_time)
 
-    async def start(self, launchers_singleton):
-        self.launchers_singleton = launchers_singleton
+    async def start(self, launchers):
+        self.launchers = launchers
         self.remove_old_partials_loop_task = asyncio.create_task(
             self.remove_old_partials_loop()
         )
@@ -233,7 +240,7 @@ class Partials(object):
                         if points_interval.scrub() == 0:
                             del self.cache[launcher_id]
                             # Check if NFT is still assigned to pool
-                            await self.launchers_singleton.add_launcher(
+                            await self.launchers.add_singleton(
                                 bytes32(bytes.fromhex(launcher_id))
                             )
                         if points_interval.points != before:
@@ -256,12 +263,8 @@ class Partials(object):
             except Exception:
                 logger.error('Unexpected error in scrub_loop', exc_info=True)
 
-    async def get_pool_size_and_etw(self):
-        pool_size = self.calculate_estimated_size(self.cache.all.points)
-        blockchain_space = self.pool.blockchain_state['space']
-        proportion = pool_size / blockchain_space if blockchain_space else -1
-        etw = int(await self.pool.get_average_block_time() / proportion) if proportion else -1
-        return pool_size, etw
+    async def get_pool_size(self):
+        return self.calculate_estimated_size(self.cache.all.points)
 
     async def remove_old_partials_loop(self):
         while True:
@@ -351,7 +354,7 @@ class Partials(object):
 
                         if rec.is_pool_member:
                             # Check if farmer is still a pool member
-                            await self.launchers_singleton.add_launcher(rec.launcher_id)
+                            await self.launchers.add_singleton(rec.launcher_id)
                     if farmer_records:
                         logger.debug('%d launchers stopped sending partials.', len(farmer_records))
                         await self.pool.run_hook('missing_partials', farmer_records)

@@ -257,3 +257,28 @@ async def find_reward_from_coinrecord(
             if cr.spent and cr.spent_block_index == coin_record.confirmed_block_index and \
                     cr.coin.puzzle_hash == farmer.p2_singleton_puzzle_hash:
                 return cr, farmer
+
+
+async def find_last_reward_from_launcher(
+    node_rpc_client: FullNodeRpcClient,
+    farmer: FarmerRecord,
+    current_reward_timestamp: uint64,
+) -> Optional[CoinRecord]:
+
+    end = int(current_reward_timestamp) - 1
+    last_reward = None
+    while end > 0:
+        start = end - 50000
+        if start < 0:
+            start = 0
+        coin_records = await node_rpc_client.get_coin_records_by_puzzle_hash(
+            farmer.p2_singleton_puzzle_hash,
+            include_spent_coins=True,
+            start_height=start,
+            end_height=end,
+        )
+        if coin_records:
+            last_reward = sorted(coin_records, key=lambda x: x.confirmed_block_index)[-1]
+            break
+        end = start
+    return last_reward
