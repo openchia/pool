@@ -1263,7 +1263,11 @@ class Pool:
             # blockchain. We need to check for double submissions.
             pos_hash = partial.payload.proof_of_space.get_hash()
             if self.recent_points_added.get(pos_hash):
-                self.log.info(f"Double signage point submitted for proof: {partial.payload}")
+                self.log.info(
+                    'Double signage point submitted for pos_hash %r, launcher id %r',
+                    pos_hash,
+                    partial.payload.launcher_id,
+                )
                 await self.partials.add_partial(
                     partial.payload,
                     req_metadata,
