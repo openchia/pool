@@ -1145,7 +1145,22 @@ class Pool:
                             f"Waiting for transaction to obtain {self.confirmation_security_threshold} confirmations"
                         )
                         if not transaction.confirmed:
-                            self.log.info(f"Not confirmed. In mempool? {transaction.is_in_mempool()}")
+                            is_in_mempool = transaction.is_in_mempool()
+                            self.log.info(f"Not confirmed. In mempool? {is_in_mempool}")
+                            # FIXME: remove me after 1.3 wallet bug has been fixed
+                            try:
+                                if not is_in_mempool:
+                                    push_tx_response: Dict = await self.node_rpc_client.push_tx(
+                                        transaction.spend_bundle
+                                    )
+                                    if push_tx_response["status"] != "SUCCESS":
+                                        self.log.error(
+                                            f"Error submitting transaction: {push_tx_response}"
+                                        )
+                            except Exception:
+                                self.log.error(
+                                    'Error pushing payment directly to node', exc_info=True,
+                                )
                         else:
                             self.log.info(f"Confirmations: {peak_height - transaction.confirmed_at_height}")
                         await asyncio.sleep(10)
