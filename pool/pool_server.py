@@ -35,6 +35,8 @@ from .record import FarmerRecord
 from .pool import Pool
 from .util import error_response, RequestMetadata
 
+plogger = logging.getLogger('partials')
+
 
 def allow_cors(response: web.Response) -> web.Response:
     response.headers["Access-Control-Allow-Origin"] = "*"
@@ -232,7 +234,7 @@ class PoolServer:
             uint64(int(start_time)),
         )
 
-        self.pool.log.info(
+        plogger.info(
             f"post_partial response {post_partial_response}, time: {time.time() - start_time} "
             f"launcher_id: {request['payload']['launcher_id']}"
         )
@@ -305,23 +307,29 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-c', '--config', default=f'{os.getcwd()}/config.yaml')
     parser.add_argument('--log-level', default='INFO')
-    parser.add_argument('--log-file')
+    parser.add_argument('--log-dir')
 
     args = parser.parse_args()
 
     logging.root.setLevel(getattr(logging, args.log_level))
 
     handlers = ["console"]
-    if args.log_file:
-        handlers.append("file")
-        handlers.append("file_json")
+    if args.log_dir:
+        main_handlers = handlers + ['file', 'file_json']
+        partial_handlers = handlers + ['partial', 'partial_json']
+    else:
+        main_handlers = partial_handlers = handlers
 
     logging.config.dictConfig({
         "version": 1,
         "disable_existing_loggers": False,
         "loggers": {
+            "partials": {
+                "handlers": partial_handlers,
+                "propagate": False,
+            },
             "": {
-                "handlers": handlers,
+                "handlers": main_handlers,
             },
         },
         "handlers": {
@@ -334,7 +342,11 @@ def main():
             "file": {
                 "level": args.log_level,
                 "class": "logging.handlers.RotatingFileHandler",
-                "filename": args.log_file or "/dev/null",
+                "filename": (
+                    os.path.join(args.log_dir, 'main.log')
+                    if args.log_dir else
+                    '/dev/null'
+                ),
                 "maxBytes": 5 * 1024 * 1024,
                 "backupCount": 5,
                 "formatter": "colored",
@@ -342,7 +354,35 @@ def main():
             "file_json": {
                 "level": args.log_level,
                 "class": "logging.handlers.RotatingFileHandler",
-                "filename": f'{args.log_file}.json' or "/dev/null",
+                "filename": (
+                    os.path.join(args.log_dir, 'main.log.json')
+                    if args.log_dir else
+                    '/dev/null'
+                ),
+                "maxBytes": 5 * 1024 * 1024,
+                "backupCount": 5,
+                "formatter": "json",
+            },
+            "partial": {
+                "level": args.log_level,
+                "class": "logging.handlers.RotatingFileHandler",
+                "filename": (
+                    os.path.join(args.log_dir, 'partial.log')
+                    if args.log_dir else
+                    '/dev/null'
+                ),
+                "maxBytes": 5 * 1024 * 1024,
+                "backupCount": 5,
+                "formatter": "colored",
+            },
+            "partial_json": {
+                "level": args.log_level,
+                "class": "logging.handlers.RotatingFileHandler",
+                "filename": (
+                    os.path.join(args.log_dir, 'partial.log.json')
+                    if args.log_dir else
+                    '/dev/null'
+                ),
                 "maxBytes": 5 * 1024 * 1024,
                 "backupCount": 5,
                 "formatter": "json",

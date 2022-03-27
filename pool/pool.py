@@ -79,6 +79,7 @@ from .xchprice import XCHPrice
 
 SECONDS_PER_BLOCK = (24 * 3600) / 4608
 logger = logging.getLogger('pool')
+plogger = logging.getLogger('partials')
 
 
 class Pool:
@@ -1191,7 +1192,7 @@ class Pool:
                             partial, req_metadata, time_received, points_received
                         )
                     except Exception:
-                        self.log.error('Failed to check and confirm partial', exc_info=True)
+                        plogger.error('Failed to check and confirm partial', exc_info=True)
                     del processing[pid]
 
                 # Starts a task to check the remaining things for this partial and optionally update points
@@ -1244,12 +1245,12 @@ class Pool:
             response = await self.get_signage_point_or_eos(partial)
             if response is None or response["reverted"]:
                 if partial.payload.end_of_sub_slot:
-                    self.log.info(f"Partial EOS reverted: {partial.payload.sp_hash}")
+                    plogger.info(f"Partial EOS reverted: {partial.payload.sp_hash}")
                     await self.partials.add_partial(
                         partial.payload, req_metadata, time_received, points_received, 'EOS_REVERTED'
                     )
                 else:
-                    self.log.info(f"Partial SP reverted: {partial.payload.sp_hash}")
+                    plogger.info(f"Partial SP reverted: {partial.payload.sp_hash}")
                     await self.partials.add_partial(
                         partial.payload,
                         req_metadata,
@@ -1263,7 +1264,7 @@ class Pool:
             # blockchain. We need to check for double submissions.
             pos_hash = partial.payload.proof_of_space.get_hash()
             if self.recent_points_added.get(pos_hash):
-                self.log.info(
+                plogger.info(
                     'Double signage point submitted for pos_hash %r, launcher id %r',
                     pos_hash,
                     partial.payload.launcher_id,
@@ -1338,7 +1339,7 @@ class Pool:
                     await self.partials.add_partial(
                         partial.payload, req_metadata, time_received, points_received,
                     )
-                    self.log.info(
+                    plogger.info(
                         f"Farmer {farmer_record.launcher_id} updated points to: "
                         f"{farmer_record.points + points_received}"
                     )
