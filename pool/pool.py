@@ -440,6 +440,7 @@ class Pool:
                 hook + [name.upper()] + [json.dumps(dump(i)) for i in args]
             )
 
+            logger.debug('Running hook %r with args %r', hook, final_args)
             asyncio.ensure_future(self._run_hook_proc(hook, final_args))
 
     async def _run_hook_proc(self, hook, final_args):
@@ -460,6 +461,8 @@ class Pool:
             logger.warning('Hook %r killed after 30 seconds: %r', hook, stdout)
         if proc.returncode != 0:
             logger.warning('Hook %r returned %d: %r', hook, proc.returncode, stdout)
+        else:
+            logger.debug('Hook %r returned %d: %r', hook, proc.returncode, stdout)
 
     def set_healthy_node(self):
         higher_peak = None
