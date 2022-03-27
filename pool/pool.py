@@ -813,6 +813,7 @@ class Pool:
 
                     if c.confirmed_block_index > peak_height - self.confirmation_security_threshold:
                         # Skip unburied coins
+                        self.log.debug('Coin %r is buried, skipping.', c)
                         coin_records.remove(c)
                         continue
 
