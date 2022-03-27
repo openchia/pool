@@ -26,8 +26,10 @@ async def main(payments):
     for launcher_id, notification in (await store.get_notifications(launcher_ids)).items():
 
         if 'PUSH' not in notification['payment'] or not notification['fcm_token']:
+            print('No PUSH enabled or fcm token found for', launcher_id)
             continue
 
+        print('Payment notification being sent for', launcher_id)
         push_service.notify_single_device(
             registration_id=notification['fcm_token'],
             message_title='Payment sent!',

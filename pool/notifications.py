@@ -130,5 +130,6 @@ class Notifications(object):
                     continue
                 payments[payout['launcher_id']] += payout['amount']
 
+        logger.info('%d payments to notify', len(payments))
         if payments:
             await self.pool.run_hook('payment', payments)
