@@ -24,7 +24,7 @@ async def main():
         pool_config = yaml.safe_load(f)
     config = load_config(DEFAULT_ROOT_PATH, "config.yaml")
     node_rpc_client = await FullNodeRpcClient.create(
-        pool_config['node_hostname'], uint16(8555), DEFAULT_ROOT_PATH, config
+        pool_config['nodes'][0]['hostname'], uint16(8555), DEFAULT_ROOT_PATH, config
     )
 
     store = PgsqlPoolStore(pool_config)
