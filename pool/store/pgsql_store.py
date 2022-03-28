@@ -474,12 +474,12 @@ class PgsqlPoolStore(object):
         if last_block and last_block[0]:
             last_etw = last_block[0][0]
             last_timestamp = last_block[0][1]
-            luck = calculate_effort(
+            luck = int(calculate_effort(
                 last_etw,
                 last_timestamp,
                 estimate_to_win,
                 int(reward_record.timestamp),
-            )
+            ))
         else:
             luck = 100
 

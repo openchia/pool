@@ -240,7 +240,7 @@ def calculate_effort(
     last_timestamp: int,
     now_etw: int,
     now_timestamp: int,
-) -> int:
+) -> float:
 
     # Effective ETW is the mean between last ETW and current ETW
     if last_etw != -1:
@@ -252,8 +252,8 @@ def calculate_effort(
     # If time is negative means we are adding a block that was won some time ago
     # e.g. farmer that wasn't sending partials to the pool
     if time_since_last < 0:
-        effort = 0
+        effort = 0.0
     else:
-        effort = int((time_since_last / effective_etw) * 100)
+        effort = (time_since_last / effective_etw) * 100
 
     return effort

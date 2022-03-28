@@ -880,12 +880,12 @@ class Pool:
                         if not last_launcher_timestamp:
                             launcher_effort = -1
                         else:
-                            launcher_effort = calculate_effort(
+                            launcher_effort = int(calculate_effort(
                                 last_launcher_etw,
                                 int(last_launcher_timestamp),
                                 launcher_etw,
                                 int(reward.timestamp),
-                            )
+                            ))
 
                         hook_args.append((reward, farmer))
 
