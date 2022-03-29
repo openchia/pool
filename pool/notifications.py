@@ -45,6 +45,7 @@ class Notifications(object):
 
         for i in existing_enabled - all_enabled:
             existing_enabled.remove(i)
+            self._drop_size_state.drop(i, None)
 
         for i in all_enabled - existing_enabled:
             # Default values
@@ -62,6 +63,8 @@ class Notifications(object):
         # spread the load
         max_checks_per_round = max(200, len(self._drop_size_state) / 4)
 
+        logger.debug('Going to check size drop %d notifications', len(self._drop_size_state))
+
         time_now = time.monotonic()
         for launcher, attrs in list(filter(
             lambda x: x[1]['last_checked'] < time_now - x[1]['size_drop_interval'],
@@ -72,7 +75,9 @@ class Notifications(object):
             interval_s = interval * 60
 
             # Only check launchers that have not been checked soon enough
-            if attrs['last_checked'] > time.monotonic() - interval_s:
+            # 3 is arbitrary, re-checking times within the period
+            if attrs['last_checked'] > (time.monotonic() - interval_s) // 3:
+                logger.debug('Launcher %r already checked, skipping.', launcher)
                 continue
 
             attrs['last_checked'] = time_now
@@ -91,6 +96,8 @@ class Notifications(object):
                     start = (date, size)
                     break
 
+            logger.debug('Launcher %r sizes of %r and %r', launcher, start, end)
+
             if start is None or end is None:
                 continue
 
@@ -99,6 +106,8 @@ class Notifications(object):
 
             # Get the percentage of size decreased
             rate = end[1] / start[1]
+
+            logger.debug('Launcher %r size rate of %f', launcher, rate)
 
             # If the percentage increased or decreased lower than what we should alert on, skip
             if rate > 1 or rate >= (1 - attrs['size_drop_percent'] / 100):

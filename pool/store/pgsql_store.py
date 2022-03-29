@@ -1,6 +1,5 @@
 import asyncio
 from collections import defaultdict
-from decimal import Decimal
 import datetime
 import json
 import logging
