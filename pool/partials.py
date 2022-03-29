@@ -423,5 +423,6 @@ class Partials(object):
                     total_points -= points_interval.points
                     continue
                 payout_data['points'] = uint64(points_interval.points)
+                payout_data['launcher_id'] = launcher_id
                 points_data.append(payout_data)
         return points_data, total_points

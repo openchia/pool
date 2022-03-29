@@ -124,8 +124,8 @@ async def test__subtract_fees(wallet_rpc_client, payment_targets, total_cost, rv
     (
         {'stay_d': 0.0, 'stay_l': 2, 'pool': 0.01, 'size': {}, 'max': D('0.25')},
         [
-            {'payout_instructions': '1', 'points': 100000, 'days_pooling': 2, 'estimated_size': 1},
-            {'payout_instructions': '2', 'points': 900000, 'days_pooling': 2, 'estimated_size': 1},
+            {'payout_instructions': '1', 'points': 100000, 'days_pooling': 2, 'estimated_size': 1, 'launcher_id': 'a'},
+            {'payout_instructions': '2', 'points': 900000, 'days_pooling': 2, 'estimated_size': 1, 'launcher_id': 'b'},
         ],
         {},
         REWARD_XCH,
@@ -134,8 +134,28 @@ async def test__subtract_fees(wallet_rpc_client, payment_targets, total_cost, rv
             'pool_fee_amount': int(REWARD_XCH * 0.01),
             'referral_fee_amount': 0,
             'additions': {
-                '1': {'amount': int(REWARD_XCH * 0.99 * 0.1), 'pool_fee': int(REWARD_XCH * 0.01 * 0.1)},
-                '2': {'amount': int(REWARD_XCH * 0.99 * 0.9), 'pool_fee': int(REWARD_XCH * 0.01 * 0.9)},
+                '1': {'amount': int(REWARD_XCH * 0.99 * 0.1), 'pool_fee': int(REWARD_XCH * 0.01 * 0.1), 'launcher_ids': ['a']},
+                '2': {'amount': int(REWARD_XCH * 0.99 * 0.9), 'pool_fee': int(REWARD_XCH * 0.01 * 0.9), 'launcher_ids': ['b']},
+            },
+            'amount_to_distribute': int(REWARD_XCH * 0.99),
+            'remainings': 0,
+        },
+    ),
+    # Pool fee only + shared payout instructions
+    (
+        {'stay_d': 0.0, 'stay_l': 2, 'pool': 0.01, 'size': {}, 'max': D('0.25')},
+        [
+            {'payout_instructions': '1', 'points': 100000, 'days_pooling': 2, 'estimated_size': 1, 'launcher_id': 'a'},
+            {'payout_instructions': '1', 'points': 900000, 'days_pooling': 2, 'estimated_size': 1, 'launcher_id': 'b'},
+        ],
+        {},
+        REWARD_XCH,
+        1000000,
+        {
+            'pool_fee_amount': int(REWARD_XCH * 0.01),
+            'referral_fee_amount': 0,
+            'additions': {
+                '1': {'amount': int(REWARD_XCH * 0.99), 'pool_fee': int(REWARD_XCH * 0.01), 'launcher_ids': ['a', 'b']},
             },
             'amount_to_distribute': int(REWARD_XCH * 0.99),
             'remainings': 0,
@@ -145,9 +165,9 @@ async def test__subtract_fees(wallet_rpc_client, payment_targets, total_cost, rv
     (
         {'stay_d': 0.1, 'stay_l': 100, 'pool': 0.01, 'size': {}, 'max': D('0.25')},
         [
-            {'payout_instructions': '1', 'points': 100000, 'days_pooling': 0, 'estimated_size': 1},
-            {'payout_instructions': '2', 'points': 900000, 'days_pooling': 50, 'estimated_size': 1},
-            {'payout_instructions': '3', 'points': 1000000, 'days_pooling': 150, 'estimated_size': 1},
+            {'payout_instructions': '1', 'points': 100000, 'days_pooling': 0, 'estimated_size': 1, 'launcher_id': 'a'},
+            {'payout_instructions': '2', 'points': 900000, 'days_pooling': 50, 'estimated_size': 1, 'launcher_id': 'b'},
+            {'payout_instructions': '3', 'points': 1000000, 'days_pooling': 150, 'estimated_size': 1, 'launcher_id': 'c'},
         ],
         {},
         REWARD_XCH,
@@ -160,9 +180,9 @@ async def test__subtract_fees(wallet_rpc_client, payment_targets, total_cost, rv
             ),
             'referral_fee_amount': 0,
             'additions': {
-                '1': {'amount': int(D(REWARD_XCH) * D('0.99') * D('0.05')), 'pool_fee': int(D(REWARD_XCH) * D('0.01') * D('0.05'))},
-                '2': {'amount': int(REWARD_XCH * (1 - 0.00951) * 0.45), 'pool_fee': int(REWARD_XCH * (0.00951) * 0.45) + 1},
-                '3': {'amount': int(REWARD_XCH * 0.991 * 0.5), 'pool_fee': int(REWARD_XCH * 0.009 * 0.5) + 1},
+                '1': {'amount': int(D(REWARD_XCH) * D('0.99') * D('0.05')), 'pool_fee': int(D(REWARD_XCH) * D('0.01') * D('0.05')), 'launcher_ids': ['a']},
+                '2': {'amount': int(REWARD_XCH * (1 - 0.00951) * 0.45), 'pool_fee': int(REWARD_XCH * (0.00951) * 0.45) + 1, 'launcher_ids': ['b']},
+                '3': {'amount': int(REWARD_XCH * 0.991 * 0.5), 'pool_fee': int(REWARD_XCH * 0.009 * 0.5) + 1, 'launcher_ids': ['c']},
             },
             'amount_to_distribute': int(REWARD_XCH * 0.99 * 0.05) + int(REWARD_XCH * (1 - 0.00951) * 0.45) + int(REWARD_XCH * 0.991 * 0.5),
             'remainings': 0,
@@ -172,9 +192,9 @@ async def test__subtract_fees(wallet_rpc_client, payment_targets, total_cost, rv
     (
         {'stay_d': 0.1, 'stay_l': 100, 'pool': 0.01, 'size': {100: 0.1, 500: 0.2}, 'max': D('0.25')},
         [
-            {'payout_instructions': '1', 'points': 100000, 'days_pooling': 0, 'estimated_size': 1},
-            {'payout_instructions': '2', 'points': 900000, 'days_pooling': 50, 'estimated_size': 150 * 1024 ** 4},
-            {'payout_instructions': '3', 'points': 1000000, 'days_pooling': 150, 'estimated_size': 800 * 1024 ** 4},
+            {'payout_instructions': '1', 'points': 100000, 'days_pooling': 0, 'estimated_size': 1, 'launcher_id': 'a'},
+            {'payout_instructions': '2', 'points': 900000, 'days_pooling': 50, 'estimated_size': 150 * 1024 ** 4, 'launcher_id': 'b'},
+            {'payout_instructions': '3', 'points': 1000000, 'days_pooling': 150, 'estimated_size': 800 * 1024 ** 4, 'launcher_id': 'c'},
         ],
         {},
         REWARD_XCH,
@@ -187,9 +207,9 @@ async def test__subtract_fees(wallet_rpc_client, payment_targets, total_cost, rv
             ),
             'referral_fee_amount': 0,
             'additions': {
-                '1': {'amount': int(D(REWARD_XCH) * D('0.99') * D('0.05')), 'pool_fee': int(D(REWARD_XCH) * D('0.01') * D('0.05'))},
-                '2': {'amount': int(REWARD_XCH * (1 - 0.00851) * 0.45), 'pool_fee': int(REWARD_XCH * 0.00851 * 0.45)},
-                '3': {'amount': int(REWARD_XCH * 0.9925 * 0.5), 'pool_fee': int(REWARD_XCH * 0.0075 * 0.5)},
+                '1': {'amount': int(D(REWARD_XCH) * D('0.99') * D('0.05')), 'pool_fee': int(D(REWARD_XCH) * D('0.01') * D('0.05')), 'launcher_ids': ['a']},
+                '2': {'amount': int(REWARD_XCH * (1 - 0.00851) * 0.45), 'pool_fee': int(REWARD_XCH * 0.00851 * 0.45), 'launcher_ids': ['b']},
+                '3': {'amount': int(REWARD_XCH * 0.9925 * 0.5), 'pool_fee': int(REWARD_XCH * 0.0075 * 0.5), 'launcher_ids': ['c']},
             },
             'amount_to_distribute': int(REWARD_XCH * 0.99 * 0.05) + int(REWARD_XCH * (1 - 0.00851) * 0.45) + int(REWARD_XCH * 0.9925 * 0.5),
             'remainings': 0,
@@ -199,14 +219,15 @@ async def test__subtract_fees(wallet_rpc_client, payment_targets, total_cost, rv
     (
         {'stay_d': 0.1, 'stay_l': 100, 'pool': 0.01, 'size': {100: 0.1, 500: 0.2}, 'max': D('0.25')},
         [
-            {'payout_instructions': '1', 'points': 100000, 'days_pooling': 0, 'estimated_size': 1},
-            {'payout_instructions': '2', 'points': 900000, 'days_pooling': 50, 'estimated_size': 150 * 1024 ** 4},
-            {'payout_instructions': '3', 'points': 1000000, 'days_pooling': 150, 'estimated_size': 800 * 1024 ** 4},
+            {'payout_instructions': '1', 'points': 100000, 'days_pooling': 0, 'estimated_size': 1, 'launcher_id': 'a'},
+            {'payout_instructions': '2', 'points': 900000, 'days_pooling': 50, 'estimated_size': 150 * 1024 ** 4, 'launcher_id': 'b'},
+            {'payout_instructions': '3', 'points': 1000000, 'days_pooling': 150, 'estimated_size': 800 * 1024 ** 4, 'launcher_id': 'c'},
         ],
         {
             '3': {
                 'id': 11,
                 'target_payout_instructions': '4',
+                'target_launcher_id': 'd',
             },
         },
         REWARD_XCH,
@@ -219,10 +240,10 @@ async def test__subtract_fees(wallet_rpc_client, payment_targets, total_cost, rv
             ),
             'referral_fee_amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2),
             'additions': {
-                '1': {'amount': int(D(REWARD_XCH) * D('0.99') * D('0.05')), 'pool_fee': int(D(REWARD_XCH) * D('0.01') * D('0.05'))},
-                '2': {'amount': int(REWARD_XCH * (1 - 0.00851) * 0.45), 'pool_fee': int(REWARD_XCH * 0.00851 * 0.45)},
-                '3': {'amount': int(REWARD_XCH * 0.9925 * 0.5), 'referral': 11, 'referral_amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2), 'pool_fee': int(REWARD_XCH * 0.0075 * 0.5)},
-                '4': {'amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2), 'pool_fee': 0},
+                '1': {'amount': int(D(REWARD_XCH) * D('0.99') * D('0.05')), 'pool_fee': int(D(REWARD_XCH) * D('0.01') * D('0.05')), 'launcher_ids': ['a']},
+                '2': {'amount': int(REWARD_XCH * (1 - 0.00851) * 0.45), 'pool_fee': int(REWARD_XCH * 0.00851 * 0.45), 'launcher_ids': ['b']},
+                '3': {'amount': int(REWARD_XCH * 0.9925 * 0.5), 'referral': 11, 'referral_amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2), 'pool_fee': int(REWARD_XCH * 0.0075 * 0.5), 'launcher_ids': ['c']},
+                '4': {'amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2), 'pool_fee': 0, 'launcher_ids': ['d']},
             },
             'amount_to_distribute': int(REWARD_XCH * 0.99 * 0.05) + int(REWARD_XCH * (1 - 0.00851) * 0.45) + int(REWARD_XCH * 0.9925 * 0.5) + int(REWARD_XCH * 0.0075 * 0.5 * 0.2),
             'remainings': 0,
@@ -232,18 +253,20 @@ async def test__subtract_fees(wallet_rpc_client, payment_targets, total_cost, rv
     (
         {'stay_d': 0.1, 'stay_l': 100, 'pool': 0.01, 'size': {100: 0.1, 500: 0.2}, 'max': D('0.25')},
         [
-            {'payout_instructions': '1', 'points': 100000, 'days_pooling': 0, 'estimated_size': 1},
-            {'payout_instructions': '2', 'points': 900000, 'days_pooling': 50, 'estimated_size': 150 * 1024 ** 4},
-            {'payout_instructions': '3', 'points': 1000000, 'days_pooling': 150, 'estimated_size': 800 * 1024 ** 4},
+            {'payout_instructions': '1', 'points': 100000, 'days_pooling': 0, 'estimated_size': 1, 'launcher_id': 'a'},
+            {'payout_instructions': '2', 'points': 900000, 'days_pooling': 50, 'estimated_size': 150 * 1024 ** 4, 'launcher_id': 'b'},
+            {'payout_instructions': '3', 'points': 1000000, 'days_pooling': 150, 'estimated_size': 800 * 1024 ** 4, 'launcher_id': 'c'},
         ],
         {
             '3': {
                 'id': 11,
                 'target_payout_instructions': '4',
+                'target_launcher_id': 'd',
             },
             '1': {
                 'id': 12,
                 'target_payout_instructions': '2',
+                'target_launcher_id': 'b',
             }
         },
         REWARD_XCH,
@@ -259,10 +282,10 @@ async def test__subtract_fees(wallet_rpc_client, payment_targets, total_cost, rv
                 int(REWARD_XCH * 0.01 * 0.05 * 0.2)
             ),
             'additions': {
-                '1': {'amount': int(REWARD_XCH * 0.99 * 0.05), 'referral': 12, 'referral_amount': int(REWARD_XCH * 0.05 * 0.01 * 0.2), 'pool_fee': int(REWARD_XCH * 0.01 * 0.05)},
-                '2': {'amount': int(REWARD_XCH * (1 - 0.00851) * 0.45) + int(REWARD_XCH * 0.05 * 0.01 * 0.2), 'pool_fee': int(REWARD_XCH * 0.00851 * 0.45)},
-                '3': {'amount': int(REWARD_XCH * 0.9925 * 0.5), 'referral': 11, 'referral_amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2), 'pool_fee': int(REWARD_XCH * 0.0075 * 0.5)},
-                '4': {'amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2), 'pool_fee': 0},
+                '1': {'amount': int(REWARD_XCH * 0.99 * 0.05), 'referral': 12, 'referral_amount': int(REWARD_XCH * 0.05 * 0.01 * 0.2), 'pool_fee': int(REWARD_XCH * 0.01 * 0.05), 'launcher_ids': ['a']},
+                '2': {'amount': int(REWARD_XCH * (1 - 0.00851) * 0.45) + int(REWARD_XCH * 0.05 * 0.01 * 0.2), 'pool_fee': int(REWARD_XCH * 0.00851 * 0.45), 'launcher_ids': ['b']},
+                '3': {'amount': int(REWARD_XCH * 0.9925 * 0.5), 'referral': 11, 'referral_amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2), 'pool_fee': int(REWARD_XCH * 0.0075 * 0.5), 'launcher_ids': ['c']},
+                '4': {'amount': int(REWARD_XCH * 0.0075 * 0.5 * 0.2), 'pool_fee': 0, 'launcher_ids': ['d']},
             },
             'amount_to_distribute': (
                 int(REWARD_XCH * 0.99 * 0.05) +

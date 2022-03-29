@@ -595,27 +595,24 @@ class PgsqlPoolStore(object):
 
             for i in additions:
 
-                rv = await self._execute(
-                    "SELECT launcher_id FROM farmer WHERE payout_instructions = %s "
-                    "ORDER BY joined_last_at NULLS FIRST",
-                    (i["puzzle_hash"].hex(),),
-                )
-                if rv and rv[0]:
-                    farmer = "'" + rv[0][0] + "'"
+                if i['launcher_ids']:
+                    launcher_id = i['launcher_ids'][0]
+                    # TODO: fix for launcher ids that are using same payout address
                 else:
-                    farmer = 'NULL'
+                    launcher_id = None
                 rv = await self._execute(
                     "INSERT INTO payout_address "
                     "(payout_id, payout_round, fee, fee_amount, tx_fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction_id) "
                     "VALUES "
-                    "(%%s,       %%s,          false, %%s,      0,      %%s,         %%s,              %s,          %%s,    %%s,         %%s,             NULL) "
-                    "RETURNING id" % (farmer,),
+                    "(%s,        %s,           false, %s,       0,      %s,          %s,               %s,          %s,     %s,          %s,              NULL) "
+                    "RETURNING id",
                     (
                         payout_id,
                         1,
                         i.get('pool_fee') or 0,
                         i["puzzle_hash"].hex(),
                         pool_puzzle_hash.hex(),
+                        launcher_id,
                         i["amount"],
                         i.get('referral'),
                         i.get('referral_amount') or 0
@@ -837,8 +834,9 @@ class PgsqlPoolStore(object):
             bytes32(bytes.fromhex(i[1])): {
                 'id': i[0],
                 'target_payout_instructions': bytes32(bytes.fromhex(i[2])),
+                'target_launcher_id': i[3],
             } for i in await self._execute(
-                "SELECT r.id, fl.payout_instructions, fr.payout_instructions "
+                "SELECT r.id, fl.payout_instructions, fr.payout_instructions, fr.launcher_id "
                 "FROM referral_referral r INNER JOIN farmer fr ON r.referrer_id = fr.launcher_id "
                 "INNER JOIN farmer fl ON r.launcher_id = fl.launcher_id "
                 "WHERE active = true"

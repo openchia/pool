@@ -98,7 +98,9 @@ async def create_share(
             continue
 
         if ph not in additions:
-            additions[ph] = {'amount': 0, 'pool_fee': 0}
+            additions[ph] = {'amount': 0, 'pool_fee': 0, 'launcher_ids': []}
+        if i['launcher_id'] not in additions[ph]['launcher_ids']:
+            additions[ph]['launcher_ids'].append(i['launcher_id'])
 
         farmer_stay_fee: D = stay_fee_discount(
             stay_fee_discount_v, stay_fee_length, i['days_pooling'],
@@ -133,9 +135,13 @@ async def create_share(
             referral = referrals[ph]
             target_ph = referral['target_payout_instructions']
             if target_ph not in additions:
-                additions[target_ph] = {'amount': 0, 'pool_fee': 0}
+                additions[target_ph] = {
+                    'amount': 0, 'pool_fee': 0, 'launcher_ids': [],
+                }
 
             additions[target_ph]['amount'] += referral_fee
+            if referral['target_launcher_id'] not in additions[target_ph]['launcher_ids']:
+                additions[target_ph]['launcher_ids'].append(referral['target_launcher_id'])
 
             additions[ph]['referral'] = referral['id']
             additions[ph]['referral_amount'] = referral_fee
