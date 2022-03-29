@@ -404,7 +404,10 @@ def main():
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
     try:
-        asyncio.run(start_pool_server(pool_config_path=args.config))
+        asyncio.run(
+            start_pool_server(pool_config_path=args.config),
+            debug=args.log_level == 'DEBUG',
+        )
     except KeyboardInterrupt:
         asyncio.run(stop())
 
