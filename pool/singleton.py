@@ -277,6 +277,8 @@ async def find_last_reward_from_launcher(
             start_height=start,
             end_height=end,
         )
+        # Only get coinbase coins
+        coin_records = list(filter(lambda x: x.coinbase, coin_records))
         if coin_records:
             last_reward = sorted(coin_records, key=lambda x: x.confirmed_block_index)[-1]
             break
