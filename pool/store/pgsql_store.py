@@ -585,11 +585,11 @@ class PgsqlPoolStore(object):
 
             rv = await self._execute(
                 "INSERT INTO payout_address "
-                "(payout_id, payout_round, fee, fee_amount, tx_fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction_id) "
+                "(payout_id, fee, fee_amount, tx_fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction_id) "
                 "VALUES "
-                "(%s,        %s,           true, 0,         0,     %s,          %s,               NULL,        %s,     NULL,        0,               NULL) "
+                "(%s,        true, 0,         0,     %s,          %s,               NULL,        %s,     NULL,        0,               NULL) "
                 "RETURNING id",
-                (payout_id, 1, fee_puzzle_hash.hex(), pool_puzzle_hash.hex(), pool_fee),
+                (payout_id, fee_puzzle_hash.hex(), pool_puzzle_hash.hex(), pool_fee),
             )
             payout_addresses_ids.append(rv[0][0])
 
@@ -602,13 +602,12 @@ class PgsqlPoolStore(object):
                     launcher_id = None
                 rv = await self._execute(
                     "INSERT INTO payout_address "
-                    "(payout_id, payout_round, fee, fee_amount, tx_fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction_id) "
+                    "(payout_id, fee, fee_amount, tx_fee, puzzle_hash, pool_puzzle_hash, launcher_id, amount, referral_id, referral_amount, transaction_id) "
                     "VALUES "
-                    "(%s,        %s,           false, %s,       0,      %s,          %s,               %s,          %s,     %s,          %s,              NULL) "
+                    "(%s,        false, %s,       0,      %s,          %s,               %s,          %s,     %s,          %s,              NULL) "
                     "RETURNING id",
                     (
                         payout_id,
-                        1,
                         i.get('pool_fee') or 0,
                         i["puzzle_hash"].hex(),
                         pool_puzzle_hash.hex(),
