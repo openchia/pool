@@ -1615,6 +1615,8 @@ class Pool:
             singleton_coin = get_most_recent_singleton_coin_from_coin_spend(buried_singleton_tip)
             if is_pool_member and not farmer_rec.is_pool_member and not farmer_rec.last_block_timestamp:
                 await self.launchers.add_last_reward(farmer_rec)
+                self.scan_p2_singleton_puzzle_hashes.add(farmer_rec.p2_singleton_puzzle_hash)
+
             await self.store.update_singleton(
                 farmer_rec, singleton_coin, buried_singleton_tip, buried_singleton_tip_state, is_pool_member
             )
