@@ -511,7 +511,7 @@ class Pool:
 
                 if not working_node:
                     self.log.error('Unable to get blockchain state from any node.')
-                    await asyncio.sleep(30)
+                    await asyncio.sleep(15)
                     continue
 
                 self.set_healthy_node()
@@ -554,7 +554,8 @@ class Pool:
                     )
                 )
 
-                await asyncio.sleep(30)
+                # Sleep less than 30 so there is time to switch nodes for checking partial
+                await asyncio.sleep(25)
             except asyncio.CancelledError:
                 self.log.info("Cancelled get_peak_loop, closing")
                 return
