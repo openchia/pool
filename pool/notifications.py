@@ -45,7 +45,7 @@ class Notifications(object):
 
         for i in existing_enabled - all_enabled:
             existing_enabled.remove(i)
-            self._drop_size_state.drop(i, None)
+            self._drop_size_state.pop(i, None)
 
         for i in all_enabled - existing_enabled:
             # Default values
