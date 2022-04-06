@@ -80,8 +80,7 @@ class PoolServer:
                 if res_object is None:
                     res_object = {}
             except Exception as e:
-                tb = traceback.format_exc()
-                self.log.warning(f"Error while handling message: {tb}")
+                self.log.warning('Error while handling message', exc_info=True)
                 if len(e.args) > 0:
                     res_error = error_response(PoolErrorCode.SERVER_EXCEPTION, f"{e.args[0]}")
                 else:

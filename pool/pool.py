@@ -229,6 +229,8 @@ class Pool:
         self.number_of_partials_target: int = pool_config["number_of_partials_target"]
         self.time_target: int = pool_config["time_target"]
 
+        self.launchers_banned: Dict[str, str] = pool_config.get('launchers_banned') or {}
+
         self.launcher_lock: Dict[bytes32, asyncio.Lock] = defaultdict(asyncio.Lock)
 
         # Tasks (infinite While loops) for different purposes
@@ -1394,10 +1396,11 @@ class Pool:
             else:
                 difficulty = request.payload.suggested_difficulty
 
-            if len(hexstr_to_bytes(request.payload.payout_instructions)) != 32:
+            puzzle_hash: Optional[str] = await self.validate_payout_instructions(request.payload.payout_instructions)
+            if puzzle_hash is None:
                 return error_dict(
                     PoolErrorCode.INVALID_PAYOUT_INSTRUCTIONS,
-                    "Payout instructions must be an xch address for this pool.",
+                    'Payout instructions must be an xch address or puzzle hash for this pool.',
                 )
 
             if not AugSchemeMPL.verify(last_state.owner_pubkey, request.payload.get_hash(), request.signature):
@@ -1428,7 +1431,7 @@ class Pool:
                 last_state,
                 uint64(0),
                 difficulty,
-                request.payload.payout_instructions,
+                puzzle_hash,
                 True,
                 None,
                 None,
@@ -1453,6 +1456,25 @@ class Pool:
             ] = await self.get_and_validate_singleton_state(request.payload.launcher_id)
 
             return PostFarmerResponse(self.welcome_message).to_json_dict()
+
+    async def validate_payout_instructions(self, payout_instructions: str) -> Optional[str]:
+        """
+        Returns the puzzle hash as a hex string from the payout instructions
+        (puzzle hash hex or bech32m address) if it's encoded correctly, otherwise returns None.
+        """
+        try:
+            if len(decode_puzzle_hash(payout_instructions)) == 32:
+                return decode_puzzle_hash(payout_instructions).hex()
+        except ValueError:
+            # Not a Chia address
+            pass
+        try:
+            if len(hexstr_to_bytes(payout_instructions)) == 32:
+                return payout_instructions
+        except ValueError:
+            # Not a puzzle hash
+            pass
+        return None
 
     async def update_farmer(self, request: PutFarmerRequest, metadata: RequestMetadata) -> Dict:
         launcher_id = request.payload.launcher_id
@@ -1490,14 +1512,14 @@ class Pool:
             response_dict['authentication_public_key'] = is_new_pubkey
 
         if request.payload.payout_instructions is not None:
+            new_ph: Optional[str] = await self.validate_payout_instructions(
+                request.payload.payout_instructions
+            )
             if is_new_payout := (
-                farmer_record.payout_instructions != request.payload.payout_instructions and
-                request.payload.payout_instructions is not None and
-                len(hexstr_to_bytes(request.payload.payout_instructions)) == 32
+                new_ph and
+                farmer_record.payout_instructions != new_ph
             ):
-                updated_record = dataclasses.replace(
-                    updated_record, payout_instructions=request.payload.payout_instructions,
-                )
+                updated_record = dataclasses.replace(updated_record, payout_instructions=new_ph)
             response_dict['payout_instructions'] = is_new_payout
 
         if updated_record != farmer_record:
@@ -1638,6 +1660,21 @@ class Pool:
         pk1: G1Element = partial.payload.proof_of_space.plot_public_key
         pk2: G1Element = farmer_record.authentication_public_key
         valid_sig = AugSchemeMPL.aggregate_verify([pk1, pk2], [message, message], partial.aggregate_signature)
+
+        if farmer_record.launcher_id.hex() in self.launchers_banned:
+            await self.partials.add_partial(
+                partial.payload,
+                req_metadata,
+                time_received_partial,
+                farmer_record.difficulty,
+                'LAUNCHER_BANNED',
+            )
+            return error_dict(
+                PoolErrorCode.NOT_FOUND,
+                'Farmer has been banned from the pool: '
+                f'{self.launchers_banned[farmer_record.launcher_id.hex()]}.',
+            )
+
         if not valid_sig:
             await self.partials.add_partial(
                 partial.payload,
