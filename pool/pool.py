@@ -466,12 +466,17 @@ class Pool:
         else:
             logger.debug('Hook %r returned %d: %r', hook, proc.returncode, stdout)
 
-    def set_healthy_node(self):
+    def set_healthy_node(self, switch=False):
         higher_peak = None
         cur_node = None
         for node in self.nodes:
             if not (node['blockchain_state'].get('sync') or {}).get('synced'):
+                logger.warning('Node %r not synced', node['hostname'])
                 continue
+            if switch is True:
+                # If we are switching always choose a different one
+                if node['rpc_client'] == self.node_rpc_client:
+                    continue
             if higher_peak is None:
                 higher_peak = node['blockchain_state']['peak'].height
                 cur_node = node

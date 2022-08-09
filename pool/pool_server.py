@@ -6,7 +6,6 @@ import logging.config
 import os
 import signal
 import time
-import traceback
 import uvloop
 from typing import Dict, Callable, Optional
 
@@ -243,6 +242,12 @@ class PoolServer:
         # Redirect to website
         raise aiohttp.web.HTTPFound(self.pool.pool_config["login_url"] + '?' + request_obj.url.query_string)
 
+    async def switch_node(self):
+        try:
+            self.pool.set_healthy_node(switch=True)
+        except Exception:
+            plogger.error('Failed to switch node', exc_info=True)
+
 
 server: Optional[PoolServer] = None
 runner: Optional[aiohttp.web.BaseRunner] = None
@@ -279,6 +284,7 @@ async def start_pool_server(pool_config_path=None):
 
     loop = asyncio.get_running_loop()
     loop.add_signal_handler(signal.SIGTERM, functools.partial(stop_sync, loop))
+    loop.add_signal_handler(signal.SIGUSR1, functools.partial(server_switch_node, server, loop))
 
     async def run_forever():
         while True:
@@ -293,6 +299,10 @@ async def start_pool_server(pool_config_path=None):
 
 def stop_sync(loop):
     asyncio.run_coroutine_threadsafe(stop(), loop)
+
+
+def server_switch_node(server, loop):
+    asyncio.run_coroutine_threadsafe(server.switch_node(), loop)
 
 
 async def stop():
