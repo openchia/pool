@@ -717,6 +717,7 @@ class Pool:
                             f"Singleton coin {singleton_coin_record.coin.name()} is spent, will not "
                             f"claim rewards"
                         )
+                        farmers_seen.add(rec.launcher_id)
                         continue
 
                     try:
