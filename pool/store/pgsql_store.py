@@ -777,12 +777,6 @@ class PgsqlPoolStore(object):
         ]
         return singletons
 
-    async def set_pool_size(self, size: int) -> None:
-        await self._execute(
-            "INSERT INTO space (date, size) VALUES (NOW(), %s)",
-            (size,)
-        )
-
     async def scrub_pplns(self, start_time: int) -> None:
         await self._execute(
             "UPDATE farmer SET points_pplns = 0, share_pplns = 0 WHERE launcher_id NOT IN ("

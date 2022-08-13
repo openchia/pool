@@ -299,7 +299,6 @@ class Partials(object):
                         continue
                     size_per_pool_host[k] = self.calculate_estimated_size(v)
 
-                await self.store.set_pool_size(size_per_pool_host['global'])
                 await self.store_ts.add_pool_size(size_per_pool_host)
             except asyncio.CancelledError:
                 logger.info('Cancelled pool_estimated_size_loop')
