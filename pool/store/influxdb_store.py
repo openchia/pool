@@ -7,12 +7,15 @@ import textwrap
 from typing import Dict, Optional
 
 from chia.protocols.pool_protocol import PostPartialPayload
+from chia.types.blockchain_format.sized_bytes import bytes32
+from chia.types.coin_record import CoinRecord
 from chia.util.ints import uint64
 
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
 from influxdb_client.domain.write_precision import WritePrecision
 
+from ..record import FarmerRecord
 from ..task import task_exception
 
 logger = logging.getLogger('influxdb_store')
@@ -58,8 +61,8 @@ class InfluxdbStore(object):
         return await self._write(bucket=self.bucket, record=p)
 
     async def add_mempool(self, size: int, cost: int, max_cost: int):
-        p = Point('mempool').field('size', size).field('cost', cost).field('max_cost',
-            max_cost).field('full_pct', float((cost / max_cost) * 100))
+        p = Point('mempool').field('size', size).field('cost', cost).field(
+            'max_cost', max_cost).field('full_pct', float((cost / max_cost) * 100))
         return await self._write(bucket=self.bucket, record=p)
 
     async def add_netspace(self, size: int):
@@ -83,6 +86,25 @@ class InfluxdbStore(object):
     async def add_xchprice(self, xch_price: Dict):
         p = Point('xchprice').field('usd', xch_price['usd']).field('eur', xch_price['eur']).field(
             'gbp', xch_price['gbp']).field('btc', xch_price['btc']).field('eth', xch_price['eth'])
+        return await self._write(bucket=self.bucket, record=p)
+
+    async def add_block(
+        self,
+        reward_record: CoinRecord,
+        absorb_fee: int,
+        singleton: bytes32,
+        farmer: FarmerRecord,
+        launcher_etw: int,
+        launcher_effort: int,
+        pool_space: int,
+        estimate_to_win: int,
+    ) -> None:
+
+        p = Point('block').field('timestamp', int(reward_record.timestamp)).field(
+            'farmed_height', int.from_bytes(bytes(reward_record.coin.parent_coin_info)[16:], 'big')
+        ).field('confirmed_block_index', int(reward_record.confirmed_block_index)).field(
+            'amount', int(reward_record.coin.amount)).field(
+            'farmed_by', farmer.launcher_id.hex()).field('pool_space', pool_space)
         return await self._write(bucket=self.bucket, record=p)
 
     async def get_launcher_sizes(self, launcher_id: str, start: str):

@@ -908,6 +908,16 @@ class Pool:
                             pool_size,
                             pool_etw,
                         )
+                        await self.store_ts.add_block(
+                            reward,
+                            0,
+                            singleton,
+                            farmer,
+                            launcher_etw,
+                            launcher_effort,
+                            pool_size,
+                            pool_etw,
+                        )
                     await self.run_hook('absorb', hook_args)
 
                 if len(coin_records) == 0:
