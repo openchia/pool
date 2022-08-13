@@ -21,7 +21,7 @@ logger = logging.getLogger('influxdb_store')
 class InfluxdbStore(object):
     def __init__(self, pool_config: Dict):
         self.pool_config = pool_config
-        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
+        self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=20)
         self._loop = asyncio.get_event_loop()
         self.bucket = self.pool_config['influxdb'].get('bucket', 'openchia')
         self.bucket_partial = self.pool_config['influxdb'].get('bucket_partial', 'openchia_partial')
