@@ -170,10 +170,19 @@ async def create_transaction(
             # We are short of coins to make the payment
             logger.info('Getting extra non ph coins')
             balance = await wallet['rpc_client'].get_wallet_balance(wallet['id'])
-            transaction = await wallet['rpc_client'].create_signed_transaction([{
-                'puzzle_hash': wallet['puzzle_hash'],
-                'amount': balance['spendable_balance'],
-            }])
+
+            try:
+                transaction = await wallet['rpc_client'].create_signed_transaction([{
+                    'puzzle_hash': wallet['puzzle_hash'],
+                    'amount': balance['spendable_balance'],
+                }])
+            except ValueError as e:
+                if 'Too many coins are required' in str(e):
+                    # Try again with a lower amount
+                    transaction = await wallet['rpc_client'].create_signed_transaction([{
+                        'puzzle_hash': wallet['puzzle_hash'],
+                        'amount': min(balance['spendable_balance'], 4 * 10 ** 12),
+                    }])
 
             amount_missing = total_additions - total_coins
             for coin in transaction.spend_bundle.removals():
