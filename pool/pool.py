@@ -1539,7 +1539,7 @@ class Pool:
             response_dict['payout_instructions'] = is_new_payout
 
         if updated_record != farmer_record:
-            self.log.info(
+            self.log.debug(
                 'Updated farmer record (pubkey: %r, payout: %r) for %s',
                 is_new_pubkey,
                 is_new_payout,
