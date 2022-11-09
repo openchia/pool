@@ -895,6 +895,8 @@ class Pool:
                                 launcher_etw,
                                 int(reward.timestamp),
                             ))
+                            if launcher_effort < 0:
+                                launcher_effort = -1
 
                         hook_args.append((reward, farmer))
 
