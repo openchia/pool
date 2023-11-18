@@ -1,4 +1,4 @@
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 
 # Identify the maintainer of an image
 LABEL maintainer="contact@openchia.io"
