@@ -12,7 +12,7 @@ from chia.types.blockchain_format.sized_bytes import bytes32
 from chia.types.coin_spend import CoinSpend
 from chia.types.condition_opcodes import ConditionOpcode
 from chia.types.spend_bundle import SpendBundle
-from chia.util.condition_tools import conditions_by_opcode, conditions_for_solution
+from chia.util.condition_tools import conditions_dict_for_solution
 from chia.util.ints import uint32, uint64
 from chia.util.hash import std_hash
 from chia.wallet.derive_keys import master_sk_to_wallet_sk
@@ -170,12 +170,9 @@ async def create_spendbundle_with_fee(constants, private_key, puzzle_hash, puzzl
         SerializedProgram.from_bytes(bytes(puzzle)),
         SerializedProgram.from_bytes(bytes(solution)),
     )
-    err, con, cost = conditions_for_solution(
+    conditions_dict = conditions_dict_for_solution(
         coin_spend.puzzle_reveal, coin_spend.solution, constants.MAX_BLOCK_COST_CLVM
     )
-    if not con:
-        raise ValueError(err)
-    conditions_dict = conditions_by_opcode(con)
 
     synthetic_secret_key = calculate_synthetic_secret_key(
         private_key, DEFAULT_HIDDEN_PUZZLE_HASH
