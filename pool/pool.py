@@ -27,6 +27,7 @@ from chia.protocols.pool_protocol import (
 )
 from chia.rpc.wallet_rpc_client import WalletRpcClient
 from chia.types.blockchain_format.coin import Coin
+from chia.types.blockchain_format.proof_of_space import verify_and_get_quality_string
 from chia.types.coin_record import CoinRecord
 from chia.types.coin_spend import CoinSpend
 from chia.util.bech32m import decode_puzzle_hash
@@ -1777,8 +1778,8 @@ class Pool:
         else:
             challenge_hash = end_of_sub_slot.challenge_chain.get_hash()
 
-        quality_string: Optional[bytes32] = partial.payload.proof_of_space.verify_and_get_quality_string(
-            self.constants, challenge_hash, partial.payload.sp_hash
+        quality_string: Optional[bytes32] = verify_and_get_quality_string(
+            partial.payload.proof_of_space, self.constants, challenge_hash, partial.payload.sp_hash
         )
         if quality_string is None:
             await self.partials.add_partial(
