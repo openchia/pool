@@ -1,4 +1,4 @@
-git+https://github.com/openchia/chia-blockchain.git@stable/1.5#egg=chia-blockchain
+git+https://github.com/openchia/chia-blockchain.git@stable/2.1#egg=chia-blockchain
 git+https://github.com/olucurious/PyFCM.git@1.5.4
 blspy~=1.0.2
 setuptools~=56.1.0
