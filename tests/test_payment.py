@@ -105,10 +105,11 @@ async def test__subtract_fees(wallet_rpc_client, payment_targets, total_cost, rv
     with patch('pool.payment.get_cost') as mock:
         mock.return_value = total_cost
         try:
-            additions, fee = await subtract_fees(wallet_rpc_client, payment_targets, additions, 0, 1, True, object())
+            additions, fee = await subtract_fees(wallet_rpc_client, 100000, payment_targets, additions, 0, 1, True, object())
         except Exception as e:
             if exc is not None and isinstance(e, exc):
                 return
+            raise
     assert rv_additions == additions
     assert fee == total_cost
 
