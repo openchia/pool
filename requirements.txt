@@ -12,3 +12,4 @@ python-json-logger==2.0.2
 py-spy==0.3.11
 pytest==6.2.4
 pytest-asyncio==0.18.2
+semver==3.0.2

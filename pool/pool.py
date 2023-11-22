@@ -1723,18 +1723,19 @@ class Pool:
             )
 
         # No version means <= 1.2
-        if req_metadata and not req_metadata.get_chia_version():
-            await self.partials.add_partial(
-                partial.payload,
-                req_metadata,
-                time_received_partial,
-                farmer_record.difficulty,
-                'INVALID_VERSION',
-            )
-            return error_dict(
-                PoolErrorCode.REQUEST_FAILED,
-                "Invalid version, make sure to use client version 1.3 or higher.",
-            )
+        if not req_metadata or not (chia_version := req_metadata.get_chia_version()):
+            if not (chia_version and chia_version.major >= 1 and chia_version.minor >= 8):
+                await self.partials.add_partial(
+                    partial.payload,
+                    req_metadata,
+                    time_received_partial,
+                    farmer_record.difficulty,
+                    'INVALID_VERSION',
+                )
+                return error_dict(
+                    PoolErrorCode.REQUEST_FAILED,
+                    "Invalid version, make sure to use client version 1.3 or higher.",
+                )
 
         response = await self.get_signage_point_or_eos(partial)
         if response is None:
