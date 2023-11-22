@@ -19,6 +19,7 @@ logger = logging.getLogger('payment')
 
 async def subtract_fees(
     wallet_rpc_client: WalletRpcClient,
+    height: int,
     payment_targets: Dict,
     additions: List,
     min_payment: int,
@@ -30,7 +31,7 @@ async def subtract_fees(
         additions,
     )
     total_cost = (await get_cost(
-        transaction.spend_bundle, constants
+        transaction.spend_bundle, height, constants
     )) * mojos_per_cost
     cost_per_target = math.ceil(D(total_cost) / D(len(payment_targets)))
 

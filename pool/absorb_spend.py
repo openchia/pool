@@ -9,7 +9,7 @@ from chia.types.blockchain_format.coin import Coin
 from chia.types.blockchain_format.program import Program
 from chia.types.blockchain_format.serialized_program import SerializedProgram
 from chia.types.blockchain_format.sized_bytes import bytes32
-from chia.types.coin_spend import CoinSpend
+from chia.types.coin_spend import CoinSpend, compute_additions
 from chia.types.condition_opcodes import ConditionOpcode
 from chia.types.spend_bundle import SpendBundle
 from chia.util.condition_tools import conditions_dict_for_solution
@@ -21,6 +21,7 @@ from chia.wallet.puzzles.p2_delegated_puzzle_or_hidden_puzzle import (
     calculate_synthetic_secret_key,
     puzzle_for_pk,
 )
+from chia.wallet.util.tx_config import DEFAULT_TX_CONFIG
 from blspy import G2Element
 from chia.wallet.wallet import Wallet
 from chia.wallet.wallet_info import WalletInfo
@@ -36,6 +37,7 @@ class NoCoinForFee(Exception):
 
 async def spend_with_fee(
     node_rpc_client,
+    peak_height: uint32,
     wallets: List[Dict],
     spends: List[CoinSpend],
     constants: ConsensusConstants,
@@ -44,7 +46,7 @@ async def spend_with_fee(
     used_fee_coins: List,
 ):
 
-    rewarded_coin: Coin = spends[0].additions()[-1]
+    rewarded_coin: Coin = compute_additions(spends[0])[-1]
     p2_coin = spends[1].coin
 
     for wallet in wallets:
@@ -65,7 +67,7 @@ async def spend_with_fee(
             # FIXME: Find out how many coins can be transferred in one transaction.
             # For now limit to 5 XCH.
             'amount': min(balance['spendable_balance'], 500000000000),
-        }])
+        }], tx_config=DEFAULT_TX_CONFIG)
 
         # Find a coin that is big enough for the fee and also not a reward
         for coin in transaction.spend_bundle.removals():
@@ -82,6 +84,7 @@ async def spend_with_fee(
 
         transaction = await wallet['rpc_client'].create_signed_transaction(
             additions=[{'puzzle_hash': wallet['puzzle_hash'], 'amount': 0}],
+            tx_config=DEFAULT_TX_CONFIG,
             coins=[spend_coin],
             coin_announcements=[Announcement(p2_coin.name(), b"$")],
             fee=uint64(1),
@@ -114,7 +117,7 @@ async def spend_with_fee(
     if absolute_fee:
         return sb
 
-    fee = uint64((await get_cost(sb, constants)) * mojos_per_cost)
+    fee = uint64((await get_cost(sb, peak_height, constants)) * mojos_per_cost)
 
     if fee > spend_coin.amount:
         raise NoCoinForFee(
@@ -124,6 +127,7 @@ async def spend_with_fee(
     if not spend_reward:
         transaction = await wallet['rpc_client'].create_signed_transaction(
             additions=[{'puzzle_hash': wallet['puzzle_hash'], 'amount': 0}],
+            tx_config=DEFAULT_TX_CONFIG,
             coins=[spend_coin],
             coin_announcements=[Announcement(p2_coin.name(), b"$")],
             fee=uint64(fee),

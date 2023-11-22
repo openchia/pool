@@ -220,6 +220,7 @@ async def create_absorb_transaction(
         assert used_fee_coins is not None
         return await spend_with_fee(
             node_rpc_client,
+            peak_height,
             wallets,
             all_spends,
             constants,

@@ -9,8 +9,9 @@ import aiopg
 from blspy import G1Element
 from chia.pools.pool_wallet_info import PoolState
 from chia.protocols.pool_protocol import PostPartialPayload, PostPartialRequest
-from chia.types.blockchain_format.sized_bytes import bytes32
 from chia.types.blockchain_format.coin import Coin
+from chia.types.blockchain_format.proof_of_space import get_plot_id
+from chia.types.blockchain_format.sized_bytes import bytes32
 from chia.types.coin_record import CoinRecord
 from chia.types.coin_spend import CoinSpend
 from chia.util.ints import uint64
@@ -400,7 +401,7 @@ class PgsqlPoolStore(object):
                         difficulty,
                         error,
                         partial_payload.harvester_id.hex(),
-                        partial_payload.proof_of_space.get_plot_id().hex(),
+                        get_plot_id(partial_payload.proof_of_space).hex(),
                         ((req_metadata.get_chia_version() or '')[:20] or None) if req_metadata else None,
                         req_metadata.get_remote() if req_metadata else None,
                         req_metadata.get_host() if req_metadata else None,

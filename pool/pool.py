@@ -1098,6 +1098,7 @@ class Pool:
                             if not self.payment_fee_absolute:
                                 additions, blockchain_fee = await subtract_fees(
                                     wallet['rpc_client'],
+                                    self.blockchain_state['peak'].height,
                                     payment_targets,
                                     additions,
                                     self.min_payment,
@@ -1122,7 +1123,7 @@ class Pool:
                                         payment_targets,
                                     )
                                     fee_absolute = (await get_cost(
-                                        transaction.spend_bundle, self.constants
+                                        transaction.spend_bundle, self.blockchain_state['peak'].height, self.constants
                                     )) * self.mojos_per_cost
                                 else:
                                     fee_absolute = self.payment_fee_absolute
@@ -1679,6 +1680,7 @@ class Pool:
         pk1: G1Element = partial.payload.proof_of_space.plot_public_key
         pk2: G1Element = farmer_record.authentication_public_key
         valid_sig = AugSchemeMPL.aggregate_verify([pk1, pk2], [message, message], partial.aggregate_signature)
+        peak_height = self.blockchain_state['peak'].height
 
         if farmer_record.launcher_id.hex() in self.launchers_banned:
             await self.partials.add_partial(
@@ -1778,8 +1780,10 @@ class Pool:
         else:
             challenge_hash = end_of_sub_slot.challenge_chain.get_hash()
 
+        # Note the use of peak_height + 1. We Are evaluating the suitability for the next block
         quality_string: Optional[bytes32] = verify_and_get_quality_string(
-            partial.payload.proof_of_space, self.constants, challenge_hash, partial.payload.sp_hash
+            partial.payload.proof_of_space, self.constants, challenge_hash, partial.payload.sp_hash,
+            height=uint32(peak_height + 1)
         )
         if quality_string is None:
             await self.partials.add_partial(
