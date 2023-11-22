@@ -9,7 +9,7 @@ from chia.protocols.pool_protocol import PoolErrorCode, ErrorResponse
 from chia.util.ints import uint16
 from chia.util.json_util import obj_to_response
 from chia.wallet.util.tx_config import DEFAULT_TX_CONFIG
-from semver.version import Version
+from packaging.version import Version
 
 logger = logging.getLogger('util')
 
@@ -46,7 +46,7 @@ class RequestMetadata:
             return
         if user_agent.startswith('Chia Blockchain v.'):
             try:
-                return Version.parse(user_agent.split('Chia Blockchain v.', 1)[-1])
+                return Version(user_agent.split('Chia Blockchain v.', 1)[-1])
             except Exception as e:
                 logger.error('Failed to parse chia version %r: %r', user_agent, e)
                 return

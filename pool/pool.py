@@ -120,6 +120,7 @@ class Pool:
         # The pool fees will be sent to this address.
         # This MUST be on a different key than the target_puzzle_hash.
         self.pool_fee_puzzle_hash: bytes32 = bytes32(decode_puzzle_hash(fee["address"]))
+        self.testnet: bool = fee["address"].startswith('txch')
 
         # may be False, True or "auto"
         payment_fee = fee.get('payment')
@@ -1724,7 +1725,7 @@ class Pool:
 
         # No version means <= 1.2
         if not req_metadata or not (chia_version := req_metadata.get_chia_version()):
-            if not (chia_version and chia_version.major >= 1 and chia_version.minor >= 8):
+            if not self.testnet and not (chia_version and chia_version.major >= 1 and chia_version.minor >= 8):
                 await self.partials.add_partial(
                     partial.payload,
                     req_metadata,
@@ -1734,7 +1735,7 @@ class Pool:
                 )
                 return error_dict(
                     PoolErrorCode.REQUEST_FAILED,
-                    "Invalid version, make sure to use client version 1.3 or higher.",
+                    "Invalid version, make sure to use client version 1.8.1 or higher.",
                 )
 
         response = await self.get_signage_point_or_eos(partial)
