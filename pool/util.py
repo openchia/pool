@@ -182,6 +182,7 @@ async def create_transaction(
             amount_missing = total_additions - total_coins
             for coin in await wallet['rpc_client'].select_coins(
                 amount=balance['spendable_balance'],
+                coin_selection_config=DEFAULT_TX_CONFIG.coin_selection_config,
                 wallet_id=wallet['id'],
             ):
                 if coin.puzzle_hash == wallet['puzzle_hash']:
