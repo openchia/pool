@@ -6,6 +6,7 @@ from typing import Dict, List, Tuple
 from chia.rpc.wallet_rpc_client import WalletRpcClient
 from chia.util.ints import uint64
 from chia.wallet.transaction_record import TransactionRecord
+from chia.wallet.util.tx_config import DEFAULT_TX_CONFIG
 
 from .fee import get_cost
 from .util import (
@@ -28,7 +29,8 @@ async def subtract_fees(
     constants,
 ) -> Tuple[List, uint64]:
     transaction: TransactionRecord = await wallet_rpc_client.create_signed_transaction(
-        additions,
+        additions=additions,
+        tx_config=DEFAULT_TX_CONFIG,
     )
     total_cost = (await get_cost(
         transaction.spend_bundle, height, constants
