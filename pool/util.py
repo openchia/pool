@@ -45,15 +45,9 @@ class RequestMetadata:
         if not user_agent:
             return
 
-        mapping = {
-            '2.0.0-sweet': '2.0.0',
-        }
-        if user_agent in mapping:
-            return Version(mapping[user_agent])
-
         if user_agent.startswith('Chia Blockchain v.'):
             try:
-                return Version('.'.join(user_agent.split('Chia Blockchain v.', 1)[-1].split('.', 3)[:3]))
+                return Version('.'.join(user_agent.split('Chia Blockchain v.', 1)[-1].split('-')[0].split('.', 3)[:3]))
             except Exception as e:
                 logger.error('Failed to parse chia version %r: %r', user_agent, e)
                 return
