@@ -44,6 +44,13 @@ class RequestMetadata:
         user_agent = self.headers.get('user-agent')
         if not user_agent:
             return
+
+        mapping = {
+            '2.0.0-sweet': '2.0.0',
+        }
+        if user_agent in mapping:
+            return Version(mapping[user_agent])
+
         if user_agent.startswith('Chia Blockchain v.'):
             try:
                 return Version('.'.join(user_agent.split('Chia Blockchain v.', 1)[-1].split('.', 3)[:3]))
