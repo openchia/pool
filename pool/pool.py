@@ -42,7 +42,6 @@ from chia.rpc.full_node_rpc_client import FullNodeRpcClient
 from chia.full_node.signage_point import SignagePoint
 from chia.types.end_of_slot_bundle import EndOfSubSlotBundle
 from chia.types.blockchain_format.sized_bytes import bytes32
-from chia.types.spend_bundle import estimate_fees
 from chia.consensus.pot_iterations import calculate_iterations_quality
 from chia.util.lru_cache import LRUCache
 from chia.wallet.transaction_record import TransactionRecord
@@ -762,14 +761,11 @@ class Pool:
 
                     push_tx_response: Dict = await self.node_rpc_client.push_tx(spend_bundle)
                     if push_tx_response["status"] == "SUCCESS":
+                        self.log.info(
+                            f"Submitted transaction successfully: {spend_bundle.name().hex()}"
+                        )
                         # See farmers_seen comment above
                         farmers_seen.add(rec.launcher_id)
-
-                        self.log.info(
-                            "Submitted transaction successfully %r with fee %r",
-                            spend_bundle.name().hex(),
-                            estimate_fees(spend_bundle),
-                        )
 
                         # Best effort to make sure coins show in the same order in the wallet
                         # (confirmed block index)
