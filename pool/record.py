@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-from blspy import G1Element
+from chia_rs import G1Element
 from chia.pools.pool_wallet_info import PoolState
 from chia.types.blockchain_format.sized_bytes import bytes32
 from chia.types.coin_spend import CoinSpend
