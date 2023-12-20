@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Tuple
 import logging
 
-from blspy import G2Element
+from chia_rs import G2Element
 
 from chia.consensus.block_record import BlockRecord
 from chia.consensus.coinbase import pool_parent_id

@@ -6,7 +6,7 @@ import logging
 from typing import Optional, Set, List, Tuple, Dict
 
 import aiopg
-from blspy import G1Element
+from chia_rs import G1Element
 from chia.pools.pool_wallet_info import PoolState
 from chia.protocols.pool_protocol import PostPartialPayload, PostPartialRequest
 from chia.types.blockchain_format.coin import Coin

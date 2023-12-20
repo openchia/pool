@@ -11,7 +11,7 @@ from typing import Dict, Callable, Optional
 
 import aiohttp
 import yaml
-from blspy import AugSchemeMPL, G2Element
+from chia_rs import AugSchemeMPL, G2Element
 from aiohttp import web
 from chia.protocols.pool_protocol import (
     PoolErrorCode,

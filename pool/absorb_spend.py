@@ -1,6 +1,6 @@
 import logging
 from typing import Any, Dict, List, Optional
-from blspy import AugSchemeMPL, PrivateKey
+from chia_rs import AugSchemeMPL, G2Element, PrivateKey
 
 from chia.consensus.block_rewards import calculate_pool_reward
 from chia.consensus.constants import ConsensusConstants
@@ -22,7 +22,6 @@ from chia.wallet.puzzles.p2_delegated_puzzle_or_hidden_puzzle import (
     puzzle_for_pk,
 )
 from chia.wallet.util.tx_config import DEFAULT_TX_CONFIG
-from blspy import G2Element
 from chia.wallet.wallet import Wallet
 from chia.wallet.wallet_info import WalletInfo
 

@@ -14,7 +14,7 @@ from collections import defaultdict
 from decimal import Decimal as D
 from typing import Dict, Optional, Set, List, Tuple
 
-from blspy import AugSchemeMPL, G1Element
+from chia_rs import AugSchemeMPL, G1Element
 from chia.pools.pool_wallet_info import PoolState, PoolSingletonState
 from chia.protocols.pool_protocol import (
     PoolErrorCode,
