@@ -125,7 +125,7 @@ async def spend_with_fee(
 
     if not spend_reward:
         transaction = await wallet['rpc_client'].create_signed_transaction(
-            additions=[{'puzzle_hash': wallet['puzzle_hash'], 'amount': 0}],
+            additions=[{'puzzle_hash': wallet['puzzle_hash'], 'amount': spend_coin.amount - fee}],
             tx_config=DEFAULT_TX_CONFIG,
             coins=[spend_coin],
             coin_announcements=[Announcement(p2_coin.name(), b"$")],
