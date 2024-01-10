@@ -31,6 +31,7 @@ from .fee import get_cost
 logger = logging.getLogger('absorb_spend')
 
 
+# FIXME: use https://github.com/Chia-Network/chia-blockchain/blob/c4f2595e54d75b844a85df2bf405335224cfc4af/chia/consensus/block_rewards.py#L19-L30
 COIN_SELECTION_CONFIG = CoinSelectionConfig(uint64(0), uint64(DEFAULT_CONSTANTS.MAX_COIN_AMOUNT), [uint64(0), uint64(1750000000000)], [])
 ABSORB_TX_CONFIG = TXConfig(
     COIN_SELECTION_CONFIG.min_coin_amount,
