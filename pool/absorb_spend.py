@@ -75,9 +75,8 @@ async def spend_with_fee(
         balance = await wallet['rpc_client'].get_wallet_balance(wallet['id'])
         transaction = await wallet['rpc_client'].create_signed_transaction([{
             'puzzle_hash': wallet['puzzle_hash'],
-            # FIXME: Find out how many coins can be transferred in one transaction.
-            # For now limit to 5 XCH.
-            'amount': min(balance['spendable_balance'], 500000000000),
+            # Lets assume fee will never be higher than 0.05 XCH for abosrb
+            'amount': 5 * 10 ** 10,
         }], tx_config=ABSORB_TX_CONFIG)
 
         # Find a coin that is big enough for the fee and also not a reward
