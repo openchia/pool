@@ -4,6 +4,7 @@ from chia_rs import AugSchemeMPL, G2Element, PrivateKey
 
 from chia.consensus.block_rewards import calculate_pool_reward
 from chia.consensus.constants import ConsensusConstants
+from chia.consensus.default_constants import DEFAULT_CONSTANTS
 from chia.types.announcement import Announcement
 from chia.types.blockchain_format.coin import Coin
 from chia.types.blockchain_format.program import Program
@@ -21,13 +22,23 @@ from chia.wallet.puzzles.p2_delegated_puzzle_or_hidden_puzzle import (
     calculate_synthetic_secret_key,
     puzzle_for_pk,
 )
-from chia.wallet.util.tx_config import DEFAULT_TX_CONFIG
+from chia.wallet.util.tx_config import DEFAULT_TX_CONFIG, CoinSelectionConfig, TXConfig
 from chia.wallet.wallet import Wallet
 from chia.wallet.wallet_info import WalletInfo
 
 from .fee import get_cost
 
 logger = logging.getLogger('absorb_spend')
+
+
+COIN_SELECTION_CONFIG = CoinSelectionConfig(uint64(0), uint64(DEFAULT_CONSTANTS.MAX_COIN_AMOUNT), [uint64(0), uint64(1750000000000)], [])
+ABSORB_TX_CONFIG = TXConfig(
+    COIN_SELECTION_CONFIG.min_coin_amount,
+    COIN_SELECTION_CONFIG.max_coin_amount,
+    COIN_SELECTION_CONFIG.excluded_coin_amounts,
+    COIN_SELECTION_CONFIG.excluded_coin_ids,
+    False,
+)
 
 
 class NoCoinForFee(Exception):
@@ -66,7 +77,7 @@ async def spend_with_fee(
             # FIXME: Find out how many coins can be transferred in one transaction.
             # For now limit to 5 XCH.
             'amount': min(balance['spendable_balance'], 500000000000),
-        }], tx_config=DEFAULT_TX_CONFIG)
+        }], tx_config=ABSORB_TX_CONFIG)
 
         # Find a coin that is big enough for the fee and also not a reward
         for coin in transaction.spend_bundle.removals():
