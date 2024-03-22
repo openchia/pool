@@ -45,7 +45,7 @@ def get_new_difficulty(
         number_of_partials_target = int(number_of_partials_target * 0.75)
     elif custom_difficulty == 'HIGHEST':
         number_of_partials_target = int(number_of_partials_target * 0.5)
-    elif custom_difficulty.startswith('CUSTOM:'):
+    elif custom_difficulty is not None and custom_difficulty.startswith('CUSTOM:'):
         # Number of partials per day
         number_of_partials_target = int(custom_difficulty[7:])
     elif custom_difficulty:
