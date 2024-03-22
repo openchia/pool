@@ -95,5 +95,16 @@ class TestDifficulty(unittest.TestCase):
 
         assert get_new_difficulty(partials, num_partials * 2, time_target, 20, 'MEDIUM', current_time, 1) == 9
 
+
+    def test_custom(self):
+
+        num_partials = 300
+        time_target = 24 * 3600
+        partials = []
+        current_time = uint64(time.time())
+        for i in range(num_partials):
+            partials.append((current_time - i * 200, 20))
+        assert get_new_difficulty(partials, num_partials, time_target, 20, 'CUSTOM:5', current_time, 1) == 1733
+
 if __name__ == "__main__":
     unittest.main()
