@@ -70,8 +70,8 @@ def get_new_difficulty(
     if len(recent_partials) < number_of_partials_target:
         time_taken = time_taken * number_of_partials_target / len(recent_partials)
 
-    # Adjust time_taken if we changed custom difficulty and we are getting 20% more partials than we should
-    if len(recent_partials) > number_of_partials_target * 1.2:
+    # Adjust time_taken if we changed custom difficulty and we are getting 50% more partials than we should
+    if len(recent_partials) > number_of_partials_target * 1.5:
         time_taken = time_taken * number_of_partials_target / len(recent_partials)
 
     # Finally, this is the standard case of normal farming and slow (or no) growth, adjust to the new difficulty
