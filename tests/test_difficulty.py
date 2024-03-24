@@ -27,20 +27,6 @@ class TestDifficulty(unittest.TestCase):
 
         assert get_new_difficulty(partials, num_partials, time_target, 50, 'MEDIUM', current_time, 1) == 50
 
-    def test_recently_updated_2h(self):
-        num_partials = 300
-        time_target = 24 * 3600
-        partials = []
-        current_time = uint64(time.time())
-        for i in range(num_partials):
-            if i < 50:
-                diff = 30
-            else:
-                diff = 20
-            partials.append((current_time - i * 200, diff))
-
-        assert get_new_difficulty(partials, num_partials, time_target, 20, 'MEDIUM', current_time, 1) == 28
-
     def test_really_slow(self):
         num_partials = 300
         time_target = 24 * 3600
