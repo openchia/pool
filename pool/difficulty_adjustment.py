@@ -23,17 +23,7 @@ def get_new_difficulty(
 
     # If we recently updated difficulty, don't update again
     if any(difficulty != current_difficulty for timestamp, difficulty in recent_partials):
-
-        before_last_time = last_time = recent_partials[0][0]
-        last_diff = recent_partials[0][1]
-        for partial in recent_partials:
-            if partial[1] != last_diff:
-                before_last_time = partial[0]
-                break
-
-        # Do not allow difficulty changes in less than 2 hours
-        if last_time - before_last_time < 2 * 3600:
-            return current_difficulty
+        return current_difficulty
 
     # Lower the difficulty if we are really slow since our last partial
     last_timestamp = recent_partials[0][0]
