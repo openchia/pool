@@ -52,6 +52,7 @@ class RequestMetadata:
         fast_farmer = self.headers.get('x-fast-farmer-version')
         if fast_farmer:
             chia_version = self.headers.get('x-chia-version')
+            logger.debug('Fast Farmer %r - Chia Version %r', fast_farmer, chia_version)
             if chia_version:
                 return self._chia_version(chia_version)
 
