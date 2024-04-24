@@ -40,17 +40,27 @@ class RequestMetadata:
     def __post_init__(self):
         self.headers = {k.lower(): v for k, v in self.headers.items()}
 
+    def _chia_version(self, v):
+        try:
+            return Version('.'.join(v.split('Chia Blockchain v.', 1)[-1].split('-')[0].split('.', 3)[:3]))
+        except Exception as e:
+            logger.error('Failed to parse chia version %r: %r', v, e)
+            return
+
     def get_chia_version(self) -> Optional[str]:
+
+        fast_farmer = self.headers.get('x-fast-farmer-version')
+        if fast_farmer:
+            chia_version = self.headers.get('x-chia-version')
+            if chia_version:
+                return self._chia_version(chia_version)
+
         user_agent = self.headers.get('user-agent')
         if not user_agent:
             return
 
         if user_agent.startswith('Chia Blockchain v.'):
-            try:
-                return Version('.'.join(user_agent.split('Chia Blockchain v.', 1)[-1].split('-')[0].split('.', 3)[:3]))
-            except Exception as e:
-                logger.error('Failed to parse chia version %r: %r', user_agent, e)
-                return
+            return self._chia_version(user_agent)
 
     def get_host(self) -> Optional[str]:
         try:
