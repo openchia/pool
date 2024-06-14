@@ -962,12 +962,12 @@ class Pool:
 
                         if share['pool_fee_amount'] < 0:
                             raise RuntimeError(
-                                f'Pool fee amount is negative: {share["pool_fee_amount"]  / (10 ** 12)}'
+                                f'Pool fee amount is negative: {share["pool_fee_amount"] / (10 ** 12)}'
                             )
 
                         if share['referral_fee_amount'] < 0:
                             raise RuntimeError(
-                                f'Referral amount is negative: {share["referral_fee_amount"]  / (10 ** 12)}'
+                                f'Referral amount is negative: {share["referral_fee_amount"] / (10 ** 12)}'
                             )
 
                         self.log.info(
@@ -1728,19 +1728,23 @@ class Pool:
             )
 
         # No version means <= 1.2
-        if not req_metadata or not (chia_version := req_metadata.get_chia_version()):
-            if not self.testnet and not (chia_version and chia_version.major >= 1 and chia_version.minor >= 8):
-                await self.partials.add_partial(
-                    partial.payload,
-                    req_metadata,
-                    time_received_partial,
-                    farmer_record.difficulty,
-                    'INVALID_VERSION',
-                )
-                return error_dict(
-                    PoolErrorCode.REQUEST_FAILED,
-                    "Invalid version, make sure to use client version 1.8.1 or higher.",
-                )
+        chia_version = None
+        if req_metadata:
+            chia_version = req_metadata.get_chia_version()
+        if self.testnet:
+            pass
+        elif not chia_version or not (chia_version.major >= 2 and chia_version.minor >= 1):
+            await self.partials.add_partial(
+                partial.payload,
+                req_metadata,
+                time_received_partial,
+                farmer_record.difficulty,
+                'INVALID_VERSION',
+            )
+            return error_dict(
+                PoolErrorCode.REQUEST_FAILED,
+                "Invalid version, make sure to use client version 2.1.0 or higher.",
+            )
 
         response = await self.get_signage_point_or_eos(partial)
         if response is None:
