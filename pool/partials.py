@@ -218,7 +218,11 @@ class Partials(object):
     def calculate_estimated_size(self, points, time_target=None):
         if time_target is None:
             time_target = self.pool_config['time_target']
-        estimated_size = int(points / (time_target * 1.0881482400062102e-15))
+        # https://docs.chia.net/k-sizes/
+        # K32 avg size = ((2 * 32) + 1) * (2 ** (32 - 1)) * 0.78005 = 108884400275.4560029506683350
+        # 20 points per day = 5444220013.77280014753341675
+        # points per second = 63011.80571496296467052565683
+        estimated_size = int(points * Decimal('63011.80571496296467052565683') * time_target)
         if self.config['full_node']['selected_network'] in ('testnet7', 'testnet10'):
             # DIFFICULTY_CONSTANT_FACTOR
             # mainnet = 2 ** 67
