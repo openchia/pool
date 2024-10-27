@@ -5,7 +5,6 @@ from chia_rs import AugSchemeMPL, G2Element, PrivateKey
 from chia.consensus.block_rewards import calculate_pool_reward
 from chia.consensus.constants import ConsensusConstants
 from chia.consensus.default_constants import DEFAULT_CONSTANTS
-from chia.types.announcement import Announcement
 from chia.types.blockchain_format.coin import Coin
 from chia.types.blockchain_format.program import Program
 from chia.types.blockchain_format.serialized_program import SerializedProgram
@@ -16,6 +15,7 @@ from chia.types.spend_bundle import SpendBundle
 from chia.util.condition_tools import conditions_dict_for_solution
 from chia.util.ints import uint32, uint64
 from chia.util.hash import std_hash
+from chia.wallet.conditions import AssertCoinAnnouncement, Condition
 from chia.wallet.derive_keys import master_sk_to_wallet_sk
 from chia.wallet.puzzles.p2_delegated_puzzle_or_hidden_puzzle import (
     DEFAULT_HIDDEN_PUZZLE_HASH,
@@ -96,7 +96,7 @@ async def spend_with_fee(
             additions=[{'puzzle_hash': wallet['puzzle_hash'], 'amount': 0}],
             tx_config=DEFAULT_TX_CONFIG,
             coins=[spend_coin],
-            coin_announcements=[Announcement(p2_coin.name(), b"$")],
+            coin_announcements=[AssertCoinAnnouncement(asserted_id=p2_coin.name(), asserted_msg=b"$")],
             fee=uint64(1),
         )
 
@@ -139,7 +139,7 @@ async def spend_with_fee(
             additions=[{'puzzle_hash': wallet['puzzle_hash'], 'amount': spend_coin.amount - fee}],
             tx_config=DEFAULT_TX_CONFIG,
             coins=[spend_coin],
-            coin_announcements=[Announcement(p2_coin.name(), b"$")],
+            coin_announcements=[AssertCoinAnnouncement(asserted_id=p2_coin.name(), asserted_msg=b"$")],
             fee=uint64(fee),
         )
         used_fee_coins.append(spend_coin.name())
@@ -177,7 +177,7 @@ async def create_spendbundle_with_fee(constants, private_key, puzzle_hash, puzzl
         primaries=primaries,
         coin_announcements={message},
         fee=fee,
-        coin_announcements_to_assert={Announcement(p2_coin.name(), bytes(b"$")).name()},
+        coin_announcements_to_assert={AssertCoinAnnouncement(asserted_id=p2_coin.name(), asserted_msg=bytes(b"$")).name()},
     )
     coin_spend = CoinSpend(
         spend_coin,

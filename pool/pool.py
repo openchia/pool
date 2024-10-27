@@ -709,9 +709,9 @@ class Pool:
                     if singleton_tip is None:
                         continue
 
-                    singleton_coin_record: Optional[
-                        CoinRecord
-                    ] = await self.node_rpc_client.get_coin_record_by_name(singleton_tip.name())
+                    singleton_coin_record: Optional[CoinRecord] = (
+                        await self.node_rpc_client.get_coin_record_by_name(singleton_tip.name())
+                    )
                     if singleton_coin_record is None:
                         continue
                     if singleton_coin_record.spent:
