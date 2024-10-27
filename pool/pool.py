@@ -32,7 +32,7 @@ from chia.types.blockchain_format.proof_of_space import verify_and_get_quality_s
 from chia.types.coin_record import CoinRecord
 from chia.types.coin_spend import CoinSpend
 from chia.util.bech32m import decode_puzzle_hash
-from chia.consensus.constants import ConsensusConstants
+from chia.consensus.constants import ConsensusConstants, replace_str_to_bytes
 from chia.consensus.default_constants import DEFAULT_CONSTANTS
 from chia.util.ints import uint8, uint16, uint32, uint64
 from chia.util.byte_types import hexstr_to_bytes
@@ -103,7 +103,7 @@ class Pool:
         overrides = self.config["network_overrides"]["constants"][
             self.config["selected_network"]
         ]
-        self.constants: ConsensusConstants = DEFAULT_CONSTANTS.replace_str_to_bytes(**overrides)
+        self.constants: ConsensusConstants = replace_str_to_bytes(DEFAULT_CONSTANTS, **overrides)
 
         self.store = PgsqlPoolStore(pool_config)
         self.store_ts = InfluxdbStore(pool_config)
