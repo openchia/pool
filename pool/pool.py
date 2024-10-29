@@ -1051,9 +1051,7 @@ class Pool:
 
                     if tx_id:
                         try:
-                            transaction = await wallet['rpc_client'].get_transaction(
-                                wallet['id'], tx_id
-                            )
+                            transaction = await wallet['rpc_client'].get_transaction(tx_id)
                             # Transaction already exists, lets readjust transaction fee
                             transation_phs = set()
                             unaccounted_amount = None
