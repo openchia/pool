@@ -26,7 +26,7 @@ from chia.protocols.pool_protocol import (
     PutFarmerRequest,
     POOL_PROTOCOL_VERSION,
 )
-from chia.rpc.wallet_rpc_client import WalletRpcClient
+from chia.rpc.wallet_rpc_client import WalletRpcClient, LogIn
 from chia.types.blockchain_format.coin import Coin
 from chia.types.blockchain_format.proof_of_space import verify_and_get_quality_string
 from chia.types.coin_record import CoinRecord
@@ -351,11 +351,10 @@ class Pool:
 
         try:
             for wallet in self.wallets:
-                res = await wallet['rpc_client'].log_in(
-                    fingerprint=wallet['fingerprint']
-                )
-                if not res["success"]:
-                    raise ValueError(f"Error logging in: {res['error']}. Make sure your config fingerprint is correct.")
+                login_request = LogIn(fingerprint=wallet['fingerprint'])
+                res = await wallet['rpc_client'].log_in(login_request)
+                if not res.success:
+                    raise ValueError(f"Error logging in: {res.error}. Make sure your config fingerprint is correct.")
                 self.log.info(f"Logging in: {res}")
                 res = await wallet['rpc_client'].get_wallet_balance(wallet['id'])
                 self.log.info(f"Obtaining balance: {res}")
