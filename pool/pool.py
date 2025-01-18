@@ -353,8 +353,8 @@ class Pool:
             for wallet in self.wallets:
                 login_request = LogIn(fingerprint=wallet['fingerprint'])
                 res = await wallet['rpc_client'].log_in(login_request)
-                if not res.success:
-                    raise ValueError(f"Error logging in: {res.error}. Make sure your config fingerprint is correct.")
+                if not res["success"]:
+                    raise ValueError(f"Error logging in: {res['error']}. Make sure your config fingerprint is correct.")
                 self.log.info(f"Logging in: {res}")
                 res = await wallet['rpc_client'].get_wallet_balance(wallet['id'])
                 self.log.info(f"Obtaining balance: {res}")
