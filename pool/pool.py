@@ -353,9 +353,9 @@ class Pool:
             for wallet in self.wallets:
                 login_request = LogIn(fingerprint=wallet['fingerprint'])
                 res = await wallet['rpc_client'].log_in(login_request)
-                if not res["success"]:
-                    raise ValueError(f"Error logging in: {res['error']}. Make sure your config fingerprint is correct.")
-                self.log.info(f"Logging in: {res}")
+                if not res:
+                    raise ValueError("Error wallet logging. Make sure your config fingerprint %r is correct.", wallet['fingerprint'])
+                self.log.info(f"Logging in: {res.fingerprint}")
                 res = await wallet['rpc_client'].get_wallet_balance(wallet['id'])
                 self.log.info(f"Obtaining balance: {res}")
         except aiohttp.client_exceptions.ClientConnectorError as e:
@@ -1020,7 +1020,8 @@ class Pool:
             try:
                 peak_height = self.blockchain_state["peak"].height
                 try:
-                    await wallet['rpc_client'].log_in(fingerprint=wallet['fingerprint'])
+                    login_request = LogIn(fingerprint=wallet['fingerprint'])
+                    await wallet['rpc_client'].log_in(login_request)
                 except aiohttp.client_exceptions.ClientConnectorError:
                     self.log.warning(
                         'Failed to connect to wallet %s, retrying in 30 seconds',
