@@ -930,7 +930,11 @@ class Pool:
 
                 if len(coin_records) == 0:
                     self.scan_move_payment_pending = False
-                    self.log.info("No funds to distribute (wallet %s).", wallet['fingerprint'])
+                    self.log.info(
+                        "No funds to distribute in %s wallet (fingerprint: %s)",
+                        wallet['hostname'],
+                        wallet['fingerprint'],
+                    )
                     await asyncio.sleep(self.payment_interval)
                     continue
 
