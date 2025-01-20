@@ -1159,8 +1159,10 @@ class Pool:
 
                         self.log.info('Submitting a payment')
 
-                        await wallet['rpc_client'].push_transaction(
-                            wallet['id'], transaction
+                        await wallet['rpc_client'].push_transactions(
+                            txs=[transaction],
+                            fee=uint64(0),
+                            sign=False,
                         )
 
                         self.log.info(f"Transaction: {transaction}")
