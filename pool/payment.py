@@ -28,7 +28,7 @@ async def subtract_fees(
     enable_launcher_min_payment: bool,
     constants,
 ) -> Tuple[List, uint64]:
-    transaction: TransactionRecord = await wallet_rpc_client.create_signed_transaction(
+    transaction: TransactionRecord = await wallet_rpc_client.create_signed_transactions(
         additions=additions,
         tx_config=DEFAULT_TX_CONFIG,
     )

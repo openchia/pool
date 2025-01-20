@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock
 
 
 class WalletRpcClient(object):
-    async def create_signed_transaction(self):
+    async def create_signed_transactions(self):
         pass
 
 
