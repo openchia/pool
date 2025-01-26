@@ -140,10 +140,14 @@ async def get_singleton_state(
         return None
 
 
-def get_farmed_height(reward_coin_record: CoinRecord, genesis_challenge: bytes32) -> Optional[uint32]:
-    # Returns the height farmed if it's a coinbase reward, otherwise None
+def get_farmed_height(
+    reward_coin_record: CoinRecord,
+    genesis_challenge: bytes32
+) -> Optional[uint32]:
     for block_index in range(
-        reward_coin_record.confirmed_block_index, reward_coin_record.confirmed_block_index - 128, -1
+        reward_coin_record.confirmed_block_index,
+        reward_coin_record.confirmed_block_index - 128,
+        -1
     ):
         if block_index < 0:
             break
@@ -160,6 +164,7 @@ async def create_absorb_transaction(
     peak_height: uint32,
     reward_coin_records: List[CoinRecord],
     fee: AbsorbFee,
+    mempool_fee_threshold: Optional[int],
     absolute_fee: Optional[int],
     used_fee_coins: Optional[List],
     mempool_full_pct: int,
@@ -167,13 +172,19 @@ async def create_absorb_transaction(
     constants: ConsensusConstants,
 ) -> Optional[SpendBundle]:
     singleton_state_tuple: Optional[Tuple[CoinSpend, PoolState, PoolState]] = await get_singleton_state(
-        node_rpc_client, farmer_record.launcher_id, farmer_record, peak_height, 0, constants.GENESIS_CHALLENGE
+        node_rpc_client,
+        farmer_record.launcher_id,
+        farmer_record,
+        peak_height,
+        0,
+        constants.GENESIS_CHALLENGE
     )
+
     if singleton_state_tuple is None:
         logger.info(f"Invalid singleton {farmer_record.launcher_id}.")
         return None
+
     last_spend, last_state, last_state_2 = singleton_state_tuple
-    # Here the buried state is equivalent to the latest state, because we use 0 as the security_threshold
     assert last_state == last_state_2
 
     if last_state.state == PoolSingletonState.SELF_POOLING:
@@ -189,7 +200,6 @@ async def create_absorb_transaction(
     for reward_coin_record in reward_coin_records:
         found_block_index: Optional[uint32] = get_farmed_height(reward_coin_record, constants.GENESIS_CHALLENGE)
         if not found_block_index:
-            # The puzzle does not allow spending coins that are not a coinbase reward
             logger.info(f"Received reward {reward_coin_record.coin} that is not a pool reward.")
             continue
 
@@ -209,10 +219,8 @@ async def create_absorb_transaction(
         return None
 
     if fee == AbsorbFee.AUTO:
-        with_fee = mempool_full_pct > 10
-        logger.info(
-            'Absorb fee is AUTO. Mempool is %d%% full. Fees: %r', mempool_full_pct, with_fee,
-        )
+        with_fee = mempool_full_pct > mempool_fee_threshold
+        logger.info(f"Absorb fee is AUTO. Mempool is {mempool_full_pct}% full, and greater than {mempool_fee_threshold}% threshold. Fees: {with_fee}")
     else:
         with_fee = fee == AbsorbFee.TRUE
 
@@ -233,9 +241,10 @@ async def create_absorb_transaction(
 
 
 async def find_reward_from_coinrecord(
-    node_rpc_client: FullNodeRpcClient, store, coin_record: CoinRecord,
+    node_rpc_client: FullNodeRpcClient,
+    store,
+    coin_record: CoinRecord,
 ) -> Optional[Tuple[CoinRecord, FarmerRecord]]:
-
     farmer: FarmerRecord = await store.get_farmer_record_from_singleton(
         coin_record.coin.parent_coin_info
     )
@@ -245,9 +254,7 @@ async def find_reward_from_coinrecord(
 
     block_record: BlockRecord = await node_rpc_client.get_block_record_by_height(coin_record.confirmed_block_index)
     if block_record.is_transaction_block:
-        additions, removals = await node_rpc_client.get_additions_and_removals(
-            block_record.header_hash
-        )
+        additions, removals = await node_rpc_client.get_additions_and_removals(block_record.header_hash)
         for cr in additions:
             if cr.name == coin_record.name:
                 break
@@ -265,23 +272,25 @@ async def find_last_reward_from_launcher(
     farmer: FarmerRecord,
     current_reward_timestamp: uint64,
 ) -> Optional[CoinRecord]:
-
     end = int(current_reward_timestamp) - 1
     last_reward = None
+
     while end > 0:
         start = end - 50000
         if start < 0:
             start = 0
+
         coin_records = await node_rpc_client.get_coin_records_by_puzzle_hash(
             farmer.p2_singleton_puzzle_hash,
             include_spent_coins=True,
             start_height=start,
             end_height=end,
         )
-        # Only get coinbase coins
+
         coin_records = list(filter(lambda x: x.coinbase, coin_records))
         if coin_records:
             last_reward = sorted(coin_records, key=lambda x: x.confirmed_block_index)[-1]
             break
         end = start
+
     return last_reward

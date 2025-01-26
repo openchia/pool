@@ -3,9 +3,10 @@ import math
 
 from decimal import Decimal as D
 from typing import Dict, List, Tuple
+
+from chia.rpc.wallet_request_types import CreateSignedTransactionsResponse
 from chia.rpc.wallet_rpc_client import WalletRpcClient
 from chia.util.ints import uint64
-from chia.wallet.transaction_record import TransactionRecord
 from chia.wallet.util.tx_config import DEFAULT_TX_CONFIG
 
 from .fee import get_cost
@@ -28,13 +29,17 @@ async def subtract_fees(
     enable_launcher_min_payment: bool,
     constants,
 ) -> Tuple[List, uint64]:
-    transaction: TransactionRecord = await wallet_rpc_client.create_signed_transactions(
+    transaction: CreateSignedTransactionsResponse = await wallet_rpc_client.create_signed_transactions(
         additions=additions,
         tx_config=DEFAULT_TX_CONFIG,
     )
+
     total_cost = (await get_cost(
-        transaction.spend_bundle, height, constants
+        transaction.signed_tx.spend_bundle,
+        height,
+        constants
     )) * mojos_per_cost
+
     cost_per_target = math.ceil(D(total_cost) / D(len(payment_targets)))
 
     for targets in payment_targets.values():
@@ -51,15 +56,14 @@ async def subtract_fees(
                 pending_amount = 0
                 i['amount'] = subtract
         if pending_amount > 0:
-            raise RuntimeError('Launcher id does not have enough for a fee payment')
+            raise RuntimeError("Launcher id does not have enough for a fee payment")
 
-    # Redo additions with proper amount this time
     additions = payment_targets_to_additions(
-        payment_targets, min_payment,
+        payment_targets,
+        min_payment,
         launcher_min_payment=enable_launcher_min_payment,
     )
 
-    # Recalculate fee after ceiling value per target
     blockchain_fee = uint64(cost_per_target * len(payment_targets))
 
     return additions, blockchain_fee

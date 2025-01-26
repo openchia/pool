@@ -7,12 +7,13 @@ import os
 import signal
 import time
 import uvloop
-from typing import Dict, Callable, Optional
-
 import aiohttp
 import yaml
-from chia_rs import AugSchemeMPL, G2Element
+
+from typing import Dict, Callable, Optional
 from aiohttp import web
+from chia_rs import AugSchemeMPL, G2Element
+
 from chia.protocols.pool_protocol import (
     PoolErrorCode,
     GetFarmerResponse,

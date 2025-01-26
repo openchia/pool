@@ -134,10 +134,10 @@ class Pool:
                 f'Invalid payment_fee: {payment_fee}. Valid values: '
                 ', '.join(list(PaymentFee.__members__.keys()))
             )
-        self.payment_fee_absolute: int = fee.get('payment_absolute') or 0
+        self.payment_fee_absolute: int = fee.get('payment_absolute', 0)
 
-        # may be False, True or "auto"
-        absorb_fee = fee.get('absorb')
+        # May be False, True or "auto", default is "auto"
+        absorb_fee = fee.get('absorb', 'auto')
         absorb_fee_t = str(absorb_fee).upper()
         try:
             self.absorb_fee: AbsorbFee = AbsorbFee.__members__[absorb_fee_t]
@@ -147,6 +147,7 @@ class Pool:
                 ', '.join(list(AbsorbFee.__members__.keys()))
             )
 
+        self.absorb_fee_mempool: Optional[int] = fee.get('absorb_mempool', 10)
         self.absorb_fee_absolute: Optional[int] = fee.get('absorb_absolute')
 
         # This number should be held constant and be consistent for every pool in the network. DO NOT CHANGE
@@ -731,6 +732,7 @@ class Pool:
                             self.blockchain_state["peak"].height,
                             [cr],
                             self.absorb_fee,
+                            self.absorb_fee_mempool,
                             self.absorb_fee_absolute,
                             used_fee_coins,
                             self.blockchain_mempool_full_pct,
@@ -738,11 +740,7 @@ class Pool:
                             self.constants,
                         )
                     except NoCoinForFee as e:
-                        self.log.error(
-                            'No coin in pool wallet for absorb fee (%s). '
-                            'Retrying without fee.',
-                            e,
-                        )
+                        self.log.error(f"No coin in pool wallet for absorb fee ({e}). Retrying without fee.")
                         spend_bundle = await create_absorb_transaction(
                             self.node_rpc_client,
                             self.wallets,
