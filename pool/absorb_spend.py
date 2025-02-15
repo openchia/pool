@@ -100,8 +100,8 @@ async def spend_with_fee(
             additions=[{'puzzle_hash': wallet['puzzle_hash'], 'amount': 0}],
             tx_config=DEFAULT_TX_CONFIG,
             coins=[spend_coin],
-            coin_announcements=[AssertCoinAnnouncement(asserted_id=p2_coin.name(), asserted_msg=b"$")],
             fee=uint64(1),
+            extra_conditions=(AssertCoinAnnouncement(asserted_id=p2_coin.name(), asserted_msg=b"$"),)
         )
 
         original_sb = SpendBundle(spends, G2Element())
@@ -141,8 +141,8 @@ async def spend_with_fee(
             additions=[{'puzzle_hash': wallet['puzzle_hash'], 'amount': spend_coin.amount - fee}],
             tx_config=DEFAULT_TX_CONFIG,
             coins=[spend_coin],
-            coin_announcements=[AssertCoinAnnouncement(asserted_id=p2_coin.name(), asserted_msg=b"$")],
             fee=uint64(fee),
+            extra_conditions=(AssertCoinAnnouncement(asserted_id=p2_coin.name(), asserted_msg=b"$"),)
         )
         used_fee_coins.append(spend_coin.name())
         return SpendBundle.aggregate([original_sb, transaction.signed_tx.spend_bundle])
