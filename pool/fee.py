@@ -1,5 +1,5 @@
 from chia.full_node.bundle_tools import simple_solution_generator
-from chia.full_node.mempool_check_conditions import get_name_puzzle_conditions
+from chia._tests.util.get_name_puzzle_conditions import get_name_puzzle_conditions
 from chia.types.spend_bundle import SpendBundle
 from chia.util.ints import uint32
 
