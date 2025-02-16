@@ -1,16 +1,17 @@
+from chia.consensus.cost_calculator import NPCResult
 from chia.full_node.bundle_tools import simple_solution_generator
 from chia._tests.util.get_name_puzzle_conditions import get_name_puzzle_conditions
 from chia.types.spend_bundle import SpendBundle
-from chia.util.ints import uint32
+from chia.util.ints import uint32, uint64
 
 
-async def get_cost(bundle: SpendBundle, height: uint32, constants) -> None:
-    """
-    Checks that the cost of the transaction does not exceed blockchain limits. As of version 1.1.2, the mempool limits
-    transactions to 50% of the block limit, or 0.5 * 11000000000 = 5.5 billion cost.
-    """
+async def get_cost(
+    bundle: SpendBundle,
+    height: uint32,
+    constants
+) -> None:
     program = simple_solution_generator(bundle)
-    npc_result = get_name_puzzle_conditions(
+    npc_result: NPCResult = get_name_puzzle_conditions(
         program,
         constants.MAX_BLOCK_COST_CLVM,
         mempool_mode=True,
@@ -20,8 +21,9 @@ async def get_cost(bundle: SpendBundle, height: uint32, constants) -> None:
     if npc_result is not None and npc_result.error is not None:
         raise RuntimeError(f'rpc result error: {npc_result.error}')
 
-    cost = npc_result.cost
+    cost = uint64(0 if npc_result.conds is None else npc_result.conds.cost)
 
     if cost >= (0.5 * constants.MAX_BLOCK_COST_CLVM):
         raise RuntimeError('SpendBundle too costly')
+
     return cost
