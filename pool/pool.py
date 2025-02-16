@@ -26,7 +26,12 @@ from chia.protocols.pool_protocol import (
     PutFarmerRequest,
     POOL_PROTOCOL_VERSION,
 )
-from chia.rpc.wallet_rpc_client import WalletRpcClient, LogIn
+from chia.rpc.wallet_rpc_client import (
+    WalletRpcClient,
+    LogIn,
+    PushTransactions,
+    ConditionValidTimes,
+)
 from chia.types.blockchain_format.coin import Coin
 from chia.types.blockchain_format.proof_of_space import verify_and_get_quality_string
 from chia.types.coin_record import CoinRecord
@@ -52,6 +57,7 @@ from chia.pools.pool_puzzles import (
     get_delayed_puz_info_from_launcher_spend,
     launcher_id_to_p2_puzzle_hash,
 )
+from chia.wallet.util.tx_config import DEFAULT_TX_CONFIG
 
 from .absorb_spend import NoCoinForFee
 from .difficulty_adjustment import get_new_difficulty
@@ -1155,10 +1161,11 @@ class Pool:
 
                         self.log.info('Submitting a payment')
 
+                        push_request = PushTransactions(transactions=[transaction])
                         await wallet['rpc_client'].push_transactions(
-                            txs=[transaction],
-                            fee=uint64(0),
-                            sign=False,
+                            request=push_request,
+                            tx_config=DEFAULT_TX_CONFIG,
+                            timelock_info=ConditionValidTimes(),
                         )
 
                         self.log.info(f"Transaction: {transaction}")
