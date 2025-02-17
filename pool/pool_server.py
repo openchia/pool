@@ -156,8 +156,6 @@ class PoolServer:
         return obj_to_response(response)
 
     def post_metadata_from_request(self, request_obj):
-        # FIXME newer aiohttp
-        request_obj.url = str(request_obj.url).replace(':443', '')
         return RequestMetadata(
             url=str(request_obj.url),
             scheme=request_obj.scheme,
