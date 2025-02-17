@@ -1734,7 +1734,7 @@ class Pool:
             chia_version = req_metadata.get_chia_version()
         if self.testnet:
             pass
-        elif not chia_version or (chia_version < Version('2.5.1')):
+        elif not chia_version or (chia_version.release < Version('2.5.1').release):
             await self.partials.add_partial(
                 partial.payload,
                 req_metadata,
