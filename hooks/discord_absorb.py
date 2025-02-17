@@ -5,7 +5,7 @@ import json
 import os
 import sys
 import yaml
-
+import datetime
 
 def load_config():
     with open(os.environ['CONFIG_PATH'], 'r') as f:
@@ -15,23 +15,31 @@ def load_config():
 async def discord_blocks_farmed(absorbeb_coins):
     config = load_config()
     absorbeb_coins = json.loads(absorbeb_coins.strip())
-
     farmed_heights = []
-    farmers = set()
+    farmers = []
+
     for coin, farmer_record in absorbeb_coins:
         farmed_heights.append(
             str(int.from_bytes(bytes.fromhex(
                 coin['coin']['parent_coin_info'][2:])[16:], 'big'
             ))
         )
-        farmers.add(farmer_record['name'] or farmer_record['launcher_id'])
+        farmers.append(farmer_record)
 
-    coins_blocks = ', '.join([f'#{i}' for i in farmed_heights])
-    farmed_by = ', '.join(farmers)
+    coins_blocks = ", ".join([f"[#{i}](https://www.spacescan.io/block/{i})" for i in farmed_heights])
+    farmed_by = ", ".join([f"[{f['name'] or f['launcher_id']}](https://openchia.io/en/explorer/farmer/{f['launcher_id'].split('x')[1]})" for f in farmers])
 
     async with aiohttp.request('POST', config['hook_discord_absorb']['url'], json={
-        'content': f"New block(s) farmed! {coins_blocks}. Farmed by {farmed_by}.",
         'username': config['hook_discord_absorb']['username'],
+        'embeds': [{
+            'title': '🏆 New block(s) farmed!',
+            'description': f'New block(s) farmed! {coins_blocks}. Farmed by {farmed_by}.',
+            'color': 1350400,
+            'footer': {
+                'text': 'Powered by openchia.io'
+            },
+            'timestamp': str(datetime.datetime.now(datetime.UTC))
+        }]
     }) as r:
         pass
 
