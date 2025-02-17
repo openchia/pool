@@ -1728,7 +1728,7 @@ class Pool:
                 f"Invalid pool contract puzzle hash {partial.payload.proof_of_space.pool_contract_puzzle_hash}",
             )
 
-        # No version means <= 1.2
+        # Refuse Chia version < 2.5.1
         chia_version = None
         if req_metadata:
             chia_version = req_metadata.get_chia_version()
@@ -1744,7 +1744,7 @@ class Pool:
             )
             return error_dict(
                 PoolErrorCode.REQUEST_FAILED,
-                "Invalid version, make sure to use client version 2.1.0 or higher.",
+                f"Invalid version {chia_version}, make sure to use client version 2.5.1 or higher.",
             )
         elif chia_version:
             plogger.debug('Client version: %r', chia_version)
