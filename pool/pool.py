@@ -13,6 +13,7 @@ from asyncio import Task
 from collections import defaultdict
 from decimal import Decimal as D
 from typing import Dict, Optional, Set, List, Tuple
+from packaging.version import Version
 
 from chia_rs import AugSchemeMPL, G1Element
 from chia.pools.pool_wallet_info import PoolState, PoolSingletonState
@@ -1733,7 +1734,7 @@ class Pool:
             chia_version = req_metadata.get_chia_version()
         if self.testnet:
             pass
-        elif not chia_version or not (chia_version.major >= 2 and chia_version.minor >= 1):
+        elif not chia_version or (chia_version < Version('2.5.1')):
             await self.partials.add_partial(
                 partial.payload,
                 req_metadata,
@@ -1745,6 +1746,8 @@ class Pool:
                 PoolErrorCode.REQUEST_FAILED,
                 "Invalid version, make sure to use client version 2.1.0 or higher.",
             )
+        elif chia_version:
+            plogger.debug('Client version: %r', chia_version)
 
         response = await self.get_signage_point_or_eos(partial)
         if response is None:
