@@ -1734,7 +1734,7 @@ class Pool:
             chia_version = req_metadata.get_chia_version()
         if self.testnet:
             pass
-        elif not chia_version or (chia_version.release == Version('2.5.0').release) or (chia_version < Version('2.1.0')):
+        elif not chia_version or (chia_version > Version('2.1.4') and chia_version < Version('2.5.1')):
             await self.partials.add_partial(
                 partial.payload,
                 req_metadata,
@@ -1744,7 +1744,7 @@ class Pool:
             )
             return error_dict(
                 PoolErrorCode.REQUEST_FAILED,
-                f"Invalid version {chia_version}, make sure to use client version higher than 2.1.0 and not 2.5.0.",
+                f"Invalid version {chia_version}, make sure to use client version 2.5.1 or higher.",
             )
         elif chia_version:
             plogger.debug('Client version: %r', chia_version)
