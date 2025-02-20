@@ -1627,7 +1627,7 @@ class Pool:
         # Validate state of the singleton
         is_pool_member = True
         if singleton_tip_state.target_puzzle_hash not in self.default_target_puzzle_hashes:
-            self.log.info(
+            self.log.debug(
                 f"Wrong target puzzle hash: {singleton_tip_state.target_puzzle_hash} for launcher_id {launcher_id}"
             )
             is_pool_member = False
