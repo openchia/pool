@@ -122,7 +122,9 @@ def check_transaction(transaction, wallet_ph):
     puzzle_hash_coins = set()
     non_puzzle_hash_coins = set()
     for coin in transaction.spend_bundle.removals():
-        if coin.puzzle_hash == wallet_ph:
+        # FIXME: better way to filter out reward coins
+        # Maybe send all other coins to derivative address
+        if coin.puzzle_hash == wallet_ph and coin.amount in (1750000000000, 875000000000):
             puzzle_hash_coins.add(coin)
         else:
             non_puzzle_hash_coins.add(coin)
@@ -211,7 +213,9 @@ async def create_transaction(
                 coin_selection_config=DEFAULT_TX_CONFIG.coin_selection_config,
                 wallet_id=wallet['id'],
             ):
-                if coin.puzzle_hash == wallet['puzzle_hash']:
+                # FIXME: better way to filter out reward coins
+                # Maybe send all other coins to derivative address
+                if coin.puzzle_hash == wallet['puzzle_hash'] and coin.amount in (1750000000000, 875000000000):
                     continue
                 if coin not in non_ph_coins:
                     amount_missing -= int(coin.amount)
