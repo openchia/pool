@@ -30,14 +30,17 @@ async def main(payments):
             continue
 
         print('Payment notification being sent for', launcher_id)
-        push_service.notify_single_device(
-            registration_id=notification['fcm_token'],
-            message_title='Payment sent!',
-            message_body=(
-                f'Your launcher id {launcher_id} was just sent a payment of '
-                f'{payments[launcher_id] / 10 ** 12} XCH.'
-            ),
-        )
+        try:
+            push_service.notify_single_device(
+                registration_id=notification['fcm_token'],
+                message_title='Payment sent!',
+                message_body=(
+                    f'Your launcher id {launcher_id} was just sent a payment of '
+                    f'{payments[launcher_id] / 10 ** 12} XCH.'
+                ),
+            )
+        except Exception as e:
+            print(f'Failed to send notification: {e}')
 
     await store.close()
 
