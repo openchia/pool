@@ -934,7 +934,7 @@ class Pool:
 
                 if len(coin_records) == 0:
                     self.scan_move_payment_pending = False
-                    self.log.info(
+                    self.log.debug(
                         "No funds to distribute in %s wallet (fingerprint: %s)",
                         wallet['hostname'],
                         wallet['fingerprint'],
