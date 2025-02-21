@@ -209,7 +209,11 @@ class PoolServer:
         # TODO(pool): add rate limiting
         start_time = time.time()
         request = await request_obj.json()
-        partial: PostPartialRequest = PostPartialRequest.from_json_dict(request)
+        try:
+            partial: PostPartialRequest = PostPartialRequest.from_json_dict(request)
+        except ValueError as e:
+            plogger.error('Failed to load partial: %r: %s', request, e)
+
 
         authentication_token_error = check_authentication_token(
             partial.payload.launcher_id,
