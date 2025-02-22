@@ -212,11 +212,20 @@ class PoolServer:
         try:
             partial: PostPartialRequest = PostPartialRequest.from_json_dict(request)
         except ValueError as e:
-            plogger.error('Failed to load partial: %r: %s', request, e)
-            return error_response(
-                PoolErrorCode.REQUEST_FAILED,
-                f"Invalid partial: {e}.",
-            )
+            error = True
+            if not request['payload']['proof_of_space']['proof'].startswith('0x'):
+                request['payload']['proof_of_space']['proof'] = '0x' + request['payload']['proof_of_space']['proof']
+                try:
+                    partial: PostPartialRequest = PostPartialRequest.from_json_dict(request)
+                    error = False
+                except Exception:
+                    pass
+            if error:
+                plogger.error('Failed to load partial: %r: %s', request, e)
+                return error_response(
+                    PoolErrorCode.REQUEST_FAILED,
+                    f"Invalid partial: {e}.",
+                )
 
         authentication_token_error = check_authentication_token(
             partial.payload.launcher_id,
